@@ -1,7 +1,5 @@
 import numpy as np
-import sympy as sp
-import pickle as pk
-import os.path as path
+import scipy.integrate as intergrate
 from matplotlib import pyplot as plt
 
 '''定义全局节点,全局节点属性包括全局节点编号与全局节点坐标'''
@@ -155,7 +153,7 @@ class Elem:
 
 # 定义求解系统
 class System:
-    def __init__(self, nx, nz, lx, lz, vx, lr):
+    def __init__(self, nx, nz, lx, lz, vx, lr, e):
         self.nodes = {}  # 定义网格上所有节点
         self.elems = {}  # 定义网格上所有单元
         self.nx = nx  # 定义单元数量（Nx，Ny）
@@ -166,6 +164,7 @@ class System:
         self.f = np.zeros([(nx + 1) * (nz + 1)])  # 定义非齐次项
         self.vx = vx
         self.lr = lr
+        self.e = e
         self.p = None
         self.X, self.Z = self.mesh_init()
 
@@ -238,61 +237,77 @@ class System:
                 elem = Elem(nodes)
                 self.add_elem(elem)
 
-    # 计算刚度并组装
-    # 计算单元刚度
+    # 设置单元x积分边界
+    def x_boundary(self):
+        return [0, self.lx]
 
+    # 设置单元z积分边界
+    def z_boundary(self):
+        return [0, self.lz]
+
+    # 设置局部插值函数
+    def f_shape(self, x, z, n):
+        lx = self.lx
+        lz = self.lz
+        f0 = (1 - x / lx) * (1 - z / lz)  # 局部节点0形函数
+        f1 = x / lx * (1 - z / lz)  # 局部节点1形函数
+        f2 = z / lz * (1 - x / lx)  # 局部节点2形函数
+        f3 = x / lx * z / lz  # 局部节点3形函数
+        f = [f0, f1, f2, f3]
+        return f[n]
+
+    # 设置局部插值函数的x偏导
+    def dxfp(self, x, z, n):
+        lx = self.lx
+        lz = self.lz
+        dxf0 = - (1 - z / lz) / lx
+        dxf1 = (1 - z / lz) / lx
+        dxf2 = -z / lz / lx
+        dxf3 = z / lz / lx
+        dxf = [dxf0, dxf1, dxf2, dxf3]
+        return dxf[n]
+
+    # 设置局部插值函数的z偏导
+    def dzfp(self, x, z, n):
+        lx = self.lx
+        lz = self.lz
+        dzf0 = - (1 - x / lx) / lz
+        dzf1 = (1 - x / lx) / lz
+        dzf2 = -x / lz / lx
+        dzf3 = x / lz / lx
+        dzf = [dzf0, dzf1, dzf2, dzf3]
+        return dzf[n]
+
+    # 计算局部刚度
+    def func_k(self, x, z, n, m):
+        lr = self.lr
+        p1 = self.h_func(x, z) ** 3 * (
+                lr ** 2 * self.dxfp(x, z, n) * self.dxfp(x, z, m) + self.dzfp(x, z, n) * self.dzfp(x, z, m))
+        return p1
+    # 设置薄膜厚度函数
+    def h_func(self, x, z):
+        return 1 + self.e * np.cos(x)
+    # 设置薄膜厚度x偏导
+    def dh_func(self, x, z):
+        return -self.e * np.sin(x)
+    # 设置非齐次项函数
+    def func_f(self, x, z, n):
+        p1 = - self.f_shape(x, z, n) * self.dh_func(x, z) * self.vx
+        return p1
+
+    #计算刚度并组装
     def cal_k(self):
-
         vx = self.vx
         lr = self.lr
-        h0, h1, h2, h3, lx, lz = sp.symbols(['h1', 'h2', 'h3', 'h4', 'lx', 'lz'])
-        x, z = sp.symbols(['x', 'z'])
-        if path.exists('k_2rank_matrix.pkl') and path.exists('f_2rankmartrix.pkl'):
-            with open('k_2rank_matrix.pkl', 'rb') as file:
-                ke = pk.loads(file.read())
-            with open('f_2rank_matrix.pkl', 'rb') as file:
-                fe = pk.loads(file.read())
-        else:
-            # 通过符号运算获得关于h1,h2,h3,h4的刚度矩阵
-            f0 = (1 - x / lx) * (1 - z / lz)  # 局部节点0形函数
-            f1 = x / lx * (1 - z / lz)  # 局部节点1形函数
-            f2 = z / lz * (1 - x / lx)  # 局部节点2形函数
-            f3 = x / lx * z / lz  # 局部节点3形函数
-            h = h0 * f0 + h1 * f1 + h2 * f2 + h3 * f3  # 局部膜厚插值函数
-            ke = []  # 局部刚度矩阵初始化
-            f = [f0, f1, f2, f3]  # 构造形函数向量
-            for n in range(4):
-                ke1 = []  # 用于存放局部刚度矩阵单行元素
-                for m in range(4):
-                    p1 = h ** 3 * (lr ** 2 * sp.diff(f[n], x) * sp.diff(f[m], x) + sp.diff(f[n], z) * sp.diff(f[m], z))
-                    ke1.append(sp.integrate(sp.integrate(p1, (x, 0, lx)), (z, 0, lz)))
-                ke.append(ke1)
-            # 将局部刚度阵k转化为字符串后，写入磁盘保存
-            with open('k_2rank_matrix.pkl', 'wb') as file:
-                ke_str = pk.dumps(ke)
-                file.write(ke_str)
-            # 通过符号运算获得关于h1,h2,h3,h4的非齐次项
-            fe = []
-            for n in range(4):
-                p2 = - f[n] * sp.diff(h, x) * vx  # 有一个负号在前，由公式推导获得
-                fe.append(sp.integrate(sp.integrate(p2, (x, 0, lx)), (z, 0, lz)))
-            # 将非齐次项fe转化为字符串后，写入磁盘保存
-            with open('f_2rank_matrix.pkl', 'wb') as file:
-                fe_str = pk.dumps(fe)
-                file.write(fe_str)
-
-        #  计算每个单元的刚度矩阵
         for el in self.elems:
             elem = self.elems[el]
             for n in range(4):
-                elem.fe[n] = fe[n].evalf(
-                    subs={h0: elem.nodes[0].h, h1: elem.nodes[1].h, h2: elem.nodes[2].h,
-                          h3: elem.nodes[3].h, lx: self.lx, lz: self.lz})  # 将膜厚带入，进行局部非齐次项计算
+                ans = intergrate.nquad(self.func_f, [self.x_boundary(), self.z_boundary()], args=([n]))  # 将膜厚带入，进行局部非齐次项计算
+                elem.fe[n] = ans[0]
                 self.f[elem.nodes[n].number] += elem.fe[n]  # 组装进总体非齐次项向量
                 for m in range(4):
-                    elem.ke[n, m] = ke[n][m].evalf(
-                        subs={h0: elem.nodes[0].h, h1: elem.nodes[1].h, h2: elem.nodes[2].h, h3: elem.nodes[3].h,
-                              lx: self.lx, lz: self.lz})
+                    ans = intergrate.nquad(self.func_k, [self.x_boundary(), self.z_boundary()], args=(n, m))
+                    elem.ke[n, m] = ans[0]
                     self.k[elem.nodes[n].number][elem.nodes[m].number] += elem.ke[n, m]  # 组装总刚度矩阵，找到
 
     def set_bondary(self):

@@ -2,20 +2,19 @@ import numpy as np
 from base import Node,System,Elem
 import sympy as sp
 from matplotlib import pyplot as plt
-NX = 100;NZ = 10;e=0.5;vx = 10;lr = 1
+NX = 5;NZ = 5;e=0.5;vx = 10;lr = 1
 LX = 2 * np.pi
 LZ = 1
 lx = LX / NX
 lz = LZ / NZ
-LN_sys = System(NX,NZ,lx,lz,vx,lr)
+LN_sys = System(NX,NZ,lx,lz,vx,lr,e)
 LN_sys.creat_rect_nodes()
 LN_sys.crear_rect_elems()
 #设置薄膜厚度
-hz = np.empty([NX+1,NZ+1])
-for i in range(NX+1):
-    for j in range(NZ+1):
-        hz[i][j] = LN_sys.nodes[i+j*(NX+1)].h = 1+e*np.cos(i*lx)
-LN_sys.h = hz
+# hz = np.empty([NX+1,NZ+1])
+# for i in range(NX+1):
+#     for j in range(NZ+1):
+#         hz[i][j] = LN_sys.nodes[i+j*(NX+1)].h = 1+e*np.cos(i*lx)
 LN_sys.cal_k()
 LN_sys.set_bondary()
 LN_sys.cal_p()
