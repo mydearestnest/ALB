@@ -2,8 +2,8 @@ import numpy as np
 from base import Node,System,Elem
 import sympy as sp
 from matplotlib import pyplot as plt
-NX = 5;NZ = 5;e=0.5;vx = 10;lr = 1
-LX = 2 * np.pi
+NX = 10;NZ = 10;e=0;vx = 1;lr = 1
+LX = 1
 LZ = 1
 lx = LX / NX
 lz = LZ / NZ

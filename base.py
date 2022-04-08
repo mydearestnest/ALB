@@ -279,36 +279,41 @@ class System:
         return dzf[n]
 
     # 计算局部刚度
-    def func_k(self, x, z, n, m):
+    def func_k(self, x, z, n, m, x0, z0):
         lr = self.lr
-        p1 = self.h_func(x, z) ** 3 * (
+        p1 = self.h_func(x, z, x0, z0) ** 3 * (
                 lr ** 2 * self.dxfp(x, z, n) * self.dxfp(x, z, m) + self.dzfp(x, z, n) * self.dzfp(x, z, m))
         return p1
+
     # 设置薄膜厚度函数
-    def h_func(self, x, z):
-        return 1 + self.e * np.cos(x)
+    def h_func(self, x, z, x0, z0):
+        return 1 + self.e * np.cos(x + x0)
+
     # 设置薄膜厚度x偏导
-    def dh_func(self, x, z):
-        return -self.e * np.sin(x)
+    def dh_func(self, x, z, x0, z0):
+        return -self.e * np.sin(x + x0)
+
     # 设置非齐次项函数
-    def func_f(self, x, z, n):
-        p1 = - self.f_shape(x, z, n) * self.dh_func(x, z) * self.vx
+    def func_f(self, x, z, n, x0, z0):
+        p1 = - self.f_shape(x, z, n) * self.dh_func(x, z, x0, z0) * self.vx
         return p1
 
-    #计算刚度并组装
+    # 计算刚度并组装
     def cal_k(self):
-        vx = self.vx
-        lr = self.lr
         for el in self.elems:
             elem = self.elems[el]
+            x0 = elem.nodes[0].coords[0]
+            z0 = elem.nodes[0].coords[1]
             for n in range(4):
-                ans = intergrate.nquad(self.func_f, [self.x_boundary(), self.z_boundary()], args=([n]))  # 将膜厚带入，进行局部非齐次项计算
+                ans = intergrate.nquad(self.func_f, [self.x_boundary(), self.z_boundary()],
+                                       args=(n, x0, z0))  # 将膜厚带入，进行局部非齐次项计算
                 elem.fe[n] = ans[0]
-                self.f[elem.nodes[n].number] += elem.fe[n]  # 组装进总体非齐次项向量
+                self.f[elem.nodes[n].number] += ans[0]  # 组装进总体非齐次项向量
                 for m in range(4):
-                    ans = intergrate.nquad(self.func_k, [self.x_boundary(), self.z_boundary()], args=(n, m))
+                    ans = intergrate.nquad(self.func_k, [self.x_boundary(), self.z_boundary()],
+                                           args=(n, m, x0, z0))
                     elem.ke[n, m] = ans[0]
-                    self.k[elem.nodes[n].number][elem.nodes[m].number] += elem.ke[n, m]  # 组装总刚度矩阵，找到
+                    self.k[elem.nodes[n].number][elem.nodes[m].number] += ans[0]  # 组装总刚度矩阵，找到
 
     def set_bondary(self):
         nx = self.nx
