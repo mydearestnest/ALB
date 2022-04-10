@@ -2,7 +2,7 @@ import numpy as np
 from base import Node,System,Elem
 import sympy as sp
 from matplotlib import pyplot as plt
-NX = np.int64(100);NZ = np.int64(10);e=0;vx = 1;lr = 1
+NX = np.int64(10);NZ = np.int64(10);e=0.5;vx = 1;lr = 1
 LX = np.float64(2*np.pi)
 LZ = np.float64(1)
 lx = LX / NX
