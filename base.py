@@ -244,12 +244,12 @@ class System:
             x0 = elem.nodes[0].coords[0]
             z0 = elem.nodes[0].coords[1]
             elem.h = [elem.nodes[0].h,elem.nodes[1].h,elem.nodes[2].h,elem.nodes[3].h]
-            elem.ke = direct_ke(self.lr, elem.h)
-            # elem.fe = direct_fe(self.lx,self.lr,self.vx,elem.h)
+            elem.ke = direct_ke(self.lx,self.lz,self.lr,elem.h)
+            elem.fe = direct_fe(self.lx,self.lr,self.vx,elem.h)
             for n in range(4):
                 ans = nard_f(n, x0, z0, self.lx, self.lz, self.e, self.vx)
-                elem.fe[n] = ans[0]
-                self.f[elem.nodes[n].number] += elem.fe[n]  # 组装进总体非齐次项向量
+                # elem.fe[n] = ans[0]
+                # self.f[elem.nodes[n].number] += elem.fe[n]  # 组装进总体非齐次项向量
                 for m in range(4):
                     tol_n = elem.nodes[n].number
                     tol_m = elem.nodes[m].number
