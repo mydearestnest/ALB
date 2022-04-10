@@ -1,6 +1,6 @@
 import numpy as np
-import scipy.integrate as intergrate
 from matplotlib import pyplot as plt
+from func import direct_fe, direct_ke, cal_h, nard_f
 
 '''定义全局节点,全局节点属性包括全局节点编号与全局节点坐标'''
 
@@ -147,11 +147,10 @@ class Elem:
         else:
             print('error elem fe set')
             pass
-    # 计算单元刚度
-    # def cal_ke(self):
 
 
 # 定义求解系统
+
 class System:
     def __init__(self, nx, nz, lx, lz, vx, lr, e):
         self.nodes = {}  # 定义网格上所有节点
@@ -167,6 +166,7 @@ class System:
         self.e = e
         self.p = None
         self.X, self.Z = self.mesh_init()
+        self.h = None
 
     # 初始化网格，用于画图
     def mesh_init(self):
@@ -237,83 +237,25 @@ class System:
                 elem = Elem(nodes)
                 self.add_elem(elem)
 
-    # 设置单元x积分边界
-    def x_boundary(self):
-        return [0, self.lx]
-
-    # 设置单元z积分边界
-    def z_boundary(self):
-        return [0, self.lz]
-
-    # 设置局部插值函数
-    def f_shape(self, x, z, n):
-        lx = self.lx
-        lz = self.lz
-        f0 = (1 - x / lx) * (1 - z / lz)  # 局部节点0形函数
-        f1 = x / lx * (1 - z / lz)  # 局部节点1形函数
-        f2 = z / lz * (1 - x / lx)  # 局部节点2形函数
-        f3 = x / lx * z / lz  # 局部节点3形函数
-        f = [f0, f1, f2, f3]
-        return f[n]
-
-    # 设置局部插值函数的x偏导
-    def dxfp(self, x, z, n):
-        lx = self.lx
-        lz = self.lz
-        dxf0 = - (1 - z / lz) / lx
-        dxf1 = (1 - z / lz) / lx
-        dxf2 = -z / lz / lx
-        dxf3 = z / lz / lx
-        dxf = [dxf0, dxf1, dxf2, dxf3]
-        return dxf[n]
-
-    # 设置局部插值函数的z偏导
-    def dzfp(self, x, z, n):
-        lx = self.lx
-        lz = self.lz
-        dzf0 = - (1 - x / lx) / lz
-        dzf1 = (1 - x / lx) / lz
-        dzf2 = -x / lz / lx
-        dzf3 = x / lz / lx
-        dzf = [dzf0, dzf1, dzf2, dzf3]
-        return dzf[n]
-
-    # 计算局部刚度
-    def func_k(self, x, z, n, m, x0, z0):
-        lr = self.lr
-        p1 = self.h_func(x, z, x0, z0) ** 3 * (
-                lr ** 2 * self.dxfp(x, z, n) * self.dxfp(x, z, m) + self.dzfp(x, z, n) * self.dzfp(x, z, m))
-        return p1
-
-    # 设置薄膜厚度函数
-    def h_func(self, x, z, x0, z0):
-        return 1 + self.e * np.cos(x + x0)
-
-    # 设置薄膜厚度x偏导
-    def dh_func(self, x, z, x0, z0):
-        return -self.e * np.sin(x + x0)
-
-    # 设置非齐次项函数
-    def func_f(self, x, z, n, x0, z0):
-        p1 = - self.f_shape(x, z, n) * self.dh_func(x, z, x0, z0) * self.vx
-        return p1
-
     # 计算刚度并组装
     def cal_k(self):
         for el in self.elems:
             elem = self.elems[el]
             x0 = elem.nodes[0].coords[0]
             z0 = elem.nodes[0].coords[1]
+            elem.h = [elem.nodes[0].h,elem.nodes[1].h,elem.nodes[2].h,elem.nodes[3].h]
+            elem.ke = direct_ke(self.lr, elem.h)
+            # elem.fe = direct_fe(self.lx,self.lr,self.vx,elem.h)
             for n in range(4):
-                ans = intergrate.nquad(self.func_f, [self.x_boundary(), self.z_boundary()],
-                                       args=(n, x0, z0))  # 将膜厚带入，进行局部非齐次项计算
+                ans = nard_f(n, x0, z0, self.lx, self.lz, self.e, self.vx)
                 elem.fe[n] = ans[0]
-                self.f[elem.nodes[n].number] += ans[0]  # 组装进总体非齐次项向量
+                self.f[elem.nodes[n].number] += elem.fe[n]  # 组装进总体非齐次项向量
                 for m in range(4):
-                    ans = intergrate.nquad(self.func_k, [self.x_boundary(), self.z_boundary()],
-                                           args=(n, m, x0, z0))
-                    elem.ke[n, m] = ans[0]
-                    self.k[elem.nodes[n].number][elem.nodes[m].number] += ans[0]  # 组装总刚度矩阵，找到
+                    tol_n = elem.nodes[n].number
+                    tol_m = elem.nodes[m].number
+                    # ans = nard_k(n, m, x0, z0, self.lr, self.lx, self.lz, self.e)
+                    # elem.ke
+                    self.k[tol_n][tol_m] += elem.ke[n, m]  # 组装总刚度矩阵，找到
 
     def set_bondary(self):
         nx = self.nx
@@ -351,6 +293,10 @@ class System:
         kp_t = np.row_stack((kp.T, zeros_mat))
         self.k = np.column_stack((self.k, kp_t))  # 补充拉格朗日乘子刚度矩阵——右方
         self.f = np.hstack((self.f, fp))  # 补充附加矩阵非齐次项
+
+    # 计算厚度场
+    def cal_h(self):
+        self.h = cal_h(self.nx, self.nz, self.e)
 
     # 计算压力场
     def cal_p(self):
