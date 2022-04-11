@@ -4,19 +4,19 @@ from numba import jit, vectorize, float64
 
 
 # 设置单元x积分边界
-@jit(nopython=True)
+#@jit(nopython=True)
 def x_boundary(lx):
     return [0, lx]
 
 
 # 设置单元z积分边界
-@jit(nopython=True)
+#@jit(nopython=True)
 def z_boundary(lz):
     return [0, lz]
 
 
 # 计算局部刚度
-@jit(nopython=True)
+#@jit(nopython=True)
 def func_k(x, z, n, m, x0, z0, lr, lx, lz, e):
     dxf1 = dzf1 = dxf2 = dzf2 = 0
     if n == 0:
@@ -52,7 +52,7 @@ def func_k(x, z, n, m, x0, z0, lr, lx, lz, e):
 
 
 # 设置非齐次项函数
-@jit(nopython=True)
+#@jit(nopython=True)
 def func_f(x, z, n, x0, z0, lx, lz, e, vx):
     f_shape = 0
     if n == 0:
@@ -76,14 +76,14 @@ def nard_f(n, x0, z0, lx, lz, e, vx):
 #     return intergrate.nquad(func_k, [x_boundary(lx), z_boundary(lz)],
 #                             args=(n, m, x0, z0, lr, lx, lz, e))
 
-@jit(nopython=True)
+#@jit(nopython=True)
 def direct_fe(lx, lz, vx, h0, h1, h2, h3):
     fe = np.array([(lz * vx * (2 * h0 - 2 * h1 + h2 - h3)) / 12, (lz * vx * (2 * h0 - 2 * h1 + h2 - h3)) / 12,
                    (lz * vx * (h0 - h1 + 2 * h2 - 2 * h3)) / 12, (lz * vx * (h0 - h1 + 2 * h2 - 2 * h3)) / 12, ])
     return fe
 
 
-@jit(nopython=True)
+#@jit(nopython=True)
 def direct_ke(lx, lz, lr, h0, h1, h2, h3):
     ke = np.array([[((h0 ** 3 * lr ** 2 * lz ** 2) / 8 + (h1 ** 3 * lr ** 2 * lz ** 2) / 8 + (
             h2 ** 3 * lr ** 2 * lz ** 2) / 24 + (h3 ** 3 * lr ** 2 * lz ** 2) / 24) / (lx * lz) + (
@@ -190,7 +190,7 @@ def direct_ke(lx, lz, lr, h0, h1, h2, h3):
     return ke
 
 
-@jit(nopython=True)
+#@jit(nopython=True)
 def cal_h(nx, nz, e):
     x = np.linspace(0, 2 * np.pi, nx + 1)
     h = 1 + e * np.cos(x)

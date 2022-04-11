@@ -161,7 +161,9 @@ class System:
         self.nz = nz
         self.lx = LX / nx  # 定义单元长度
         self.lz = LZ / nz
-        self.k = np.zeros([(nx + 1) * (nz + 1), (nx + 1) * (nz + 1)])  # 定义刚度
+        # self.k = np.zeros([(nx + 1) * (nz + 1), (nx + 1) * (nz + 1)])  # 定义刚度
+        self.k = sp.dok_matrix(((nx + 1) * (nz + 1), (nx + 1) * (nz + 1)), dtype=np.float32)
+        # 使用dok稀疏矩阵内存占用更少，但计算速度降低，主要时间用于组装
         self.f = np.zeros([(nx + 1) * (nz + 1)])  # 定义非齐次项
         self.vx = vx
         self.lr = lr
@@ -254,7 +256,44 @@ class System:
                 for m in range(4):
                     tol_n = elem.nodes[n].number
                     tol_m = elem.nodes[m].number
-                    self.k[tol_n][tol_m] += elem.ke[n, m]  # 组装总刚度矩阵，找到
+                    self.k[tol_n, tol_m] += elem.ke[n, m]  # 组装总刚度矩阵，找到
+
+    # def set_bondary(self):
+    #     nx = self.nx
+    #     nz = self.nz
+    #     #  对称边界条件设置
+    #
+    #     #  边界1：p（0：NX，0）= 1
+    #     q_nodes = (nx + 1) * (nz + 1)
+    #     l_nodes = nx + 1
+    #     r_nodes = nz - 1
+    #     kp1 = np.zeros((l_nodes, q_nodes))
+    #     fp1 = np.zeros(l_nodes)
+    #     for i in range(l_nodes):
+    #         kp1[i][i] = 1
+    #         fp1[i] = 1
+    #     #  边界2：p（0：NX，NY）= 1
+    #     kp2 = np.zeros((l_nodes, q_nodes))
+    #     fp2 = np.zeros(l_nodes)
+    #     for i in range(l_nodes):
+    #         kp2[i][(nx + 1) * nz + i] = 1
+    #         fp2[i] = 1
+    #     #  边界3：周期边界条件：p（0，0：NY）=p(NX,0:NY)
+    #     kp3 = np.zeros((r_nodes, q_nodes))
+    #     fp3 = np.zeros(r_nodes)
+    #     for i in range(r_nodes):
+    #         kp3[i][(i + 1) * (nx + 1)] = 1  # 附加矩阵内，左侧边界置1
+    #         kp3[i][(i + 1) * (nx + 1) + nx] = -1  # 附加矩阵内，右侧边界置-1
+    #
+    #     kp = np.row_stack((kp1, kp2, kp3))  # 边界条件刚度阵组合
+    #
+    #     fp = np.hstack((fp1, fp2, fp3))  # 附加矩阵非齐次项组合
+    #     self.k = np.row_stack((self.k, kp))  # 补充拉格朗日乘子刚度矩阵——下方
+    #
+    #     zeros_mat = np.zeros(((2 * l_nodes + r_nodes), (2 * l_nodes + r_nodes)))  # 补充刚度零阵
+    #     kp_t = np.row_stack((kp.T, zeros_mat))
+    #     self.k = np.column_stack((self.k, kp_t))  # 补充拉格朗日乘子刚度矩阵——右方
+    #     self.f = np.hstack((self.f, fp))  # 补充附加矩阵非齐次项
 
     def set_bondary(self):
         nx = self.nx
@@ -265,32 +304,31 @@ class System:
         q_nodes = (nx + 1) * (nz + 1)
         l_nodes = nx + 1
         r_nodes = nz - 1
-        kp1 = np.zeros((l_nodes, q_nodes))
+        kp1 = sp.dok_matrix((l_nodes, q_nodes), dtype=np.float32)
         fp1 = np.zeros(l_nodes)
         for i in range(l_nodes):
-            kp1[i][i] = 1
+            kp1[i, i] = 1
             fp1[i] = 1
         #  边界2：p（0：NX，NY）= 1
-        kp2 = np.zeros((l_nodes, q_nodes))
+        kp2 = sp.dok_matrix((l_nodes, q_nodes), dtype=np.float32)
         fp2 = np.zeros(l_nodes)
         for i in range(l_nodes):
-            kp2[i][(nx + 1) * nz + i] = 1
+            kp2[i, (nx + 1) * nz + i] = 1
             fp2[i] = 1
         #  边界3：周期边界条件：p（0，0：NY）=p(NX,0:NY)
-        kp3 = np.zeros((r_nodes, q_nodes))
+        kp3 = sp.dok_matrix((r_nodes, q_nodes), dtype=np.float32)
         fp3 = np.zeros(r_nodes)
         for i in range(r_nodes):
-            kp3[i][(i + 1) * (nx + 1)] = 1  # 附加矩阵内，左侧边界置1
-            kp3[i][(i + 1) * (nx + 1) + nx] = -1  # 附加矩阵内，右侧边界置-1
+            kp3[i, (i + 1) * (nx + 1)] = 1  # 附加矩阵内，左侧边界置1
+            kp3[i, (i + 1) * (nx + 1) + nx] = -1  # 附加矩阵内，右侧边界置-1
 
-        kp = np.row_stack((kp1, kp2, kp3))  # 边界条件刚度阵组合
-
+        kp = sp.vstack((kp1, kp2, kp3))  # 边界条件刚度阵组合
         fp = np.hstack((fp1, fp2, fp3))  # 附加矩阵非齐次项组合
-        self.k = np.row_stack((self.k, kp))  # 补充拉格朗日乘子刚度矩阵——下方
+        self.k = sp.vstack((self.k, kp))  # 补充拉格朗日乘子刚度矩阵——下方
 
-        zeros_mat = np.zeros(((2 * l_nodes + r_nodes), (2 * l_nodes + r_nodes)))  # 补充刚度零阵
-        kp_t = np.row_stack((kp.T, zeros_mat))
-        self.k = np.column_stack((self.k, kp_t))  # 补充拉格朗日乘子刚度矩阵——右方
+        zeros_mat = sp.coo_matrix(((2 * l_nodes + r_nodes), (2 * l_nodes + r_nodes)))  # 补充刚度零阵
+        kp_t = sp.vstack((kp.T, zeros_mat))
+        self.k = sp.hstack((self.k, kp_t))  # 补充拉格朗日乘子刚度矩阵——右方
         self.f = np.hstack((self.f, fp))  # 补充附加矩阵非齐次项
 
     # 计算厚度场
