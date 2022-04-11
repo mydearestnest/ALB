@@ -1,6 +1,8 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from func import direct_fe, direct_ke, cal_h, nard_f
+from scipy import sparse as sp
+from scipy.sparse import linalg as sl
+from func import direct_fe, direct_ke
 
 '''定义全局节点,全局节点属性包括全局节点编号与全局节点坐标'''
 
@@ -152,13 +154,13 @@ class Elem:
 # 定义求解系统
 
 class System:
-    def __init__(self, nx, nz, lx, lz, vx, lr, e):
+    def __init__(self, nx, nz, LX, LZ, vx, lr, e):
         self.nodes = {}  # 定义网格上所有节点
         self.elems = {}  # 定义网格上所有单元
         self.nx = nx  # 定义单元数量（Nx，Ny）
         self.nz = nz
-        self.lx = lx  # 定义单元长度
-        self.lz = lz
+        self.lx = LX / nx  # 定义单元长度
+        self.lz = LZ / nz
         self.k = np.zeros([(nx + 1) * (nz + 1), (nx + 1) * (nz + 1)])  # 定义刚度
         self.f = np.zeros([(nx + 1) * (nz + 1)])  # 定义非齐次项
         self.vx = vx
@@ -241,20 +243,17 @@ class System:
     def cal_k(self):
         for el in self.elems:
             elem = self.elems[el]
-            x0 = elem.nodes[0].coords[0]
-            z0 = elem.nodes[0].coords[1]
-            elem.h = [elem.nodes[0].h,elem.nodes[1].h,elem.nodes[2].h,elem.nodes[3].h]
-            elem.ke = direct_ke(self.lx,self.lz,self.lr,elem.h)
-            elem.fe = direct_fe(self.lx,self.lr,self.vx,elem.h)
+            h0 = elem.nodes[0].h
+            h1 = elem.nodes[1].h
+            h2 = elem.nodes[2].h
+            h3 = elem.nodes[3].h
+            elem.ke = direct_ke(self.lx, self.lz, self.lr, h0, h1, h2, h3)
+            elem.fe = direct_fe(self.lx, self.lz, self.vx, h0, h1, h2, h3)
             for n in range(4):
-                # ans = nard_f(n, x0, z0, self.lx, self.lz, self.e, self.vx)
-                # elem.fe[n] = ans[0]
                 self.f[elem.nodes[n].number] += elem.fe[n]  # 组装进总体非齐次项向量
                 for m in range(4):
                     tol_n = elem.nodes[n].number
                     tol_m = elem.nodes[m].number
-                    # ans = nard_k(n, m, x0, z0, self.lr, self.lx, self.lz, self.e)
-                    # elem.ke
                     self.k[tol_n][tol_m] += elem.ke[n, m]  # 组装总刚度矩阵，找到
 
     def set_bondary(self):
@@ -296,12 +295,21 @@ class System:
 
     # 计算厚度场
     def cal_h(self):
-        self.h = cal_h(self.nx, self.nz, self.e)
+        nx = self.nx
+        nz = self.nz
+        hz = np.empty([self.nx + 1, self.nz + 1])
+        for i in range(nx + 1):
+            for j in range(nz + 1):
+                hz[i][j] = self.nodes[i + j * (nx + 1)].h = 1 + self.e * np.cos(i * self.lx)
 
     # 计算压力场
     def cal_p(self):
-        self.p = np.linalg.solve(self.k, self.f)
+        # self.p = np.linalg.solve(self.k, self.f)
+        # self.p = self.p[0:(self.nx + 1) * (self.nz + 1)].reshape(self.nz + 1, self.nx + 1)
+        sp_p = sp.csc_matrix(self.k)
+        self.p = sl.spsolve(sp_p, self.f)
         self.p = self.p[0:(self.nx + 1) * (self.nz + 1)].reshape(self.nz + 1, self.nx + 1)
+        print('calculation of pressure is over')
 
     def plot_p_3d(self):
         ax = plt.axes(projection="3d")
