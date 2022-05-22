@@ -273,7 +273,10 @@ class System:
             # self.add_fq()
             self.add_fqs()
             self.cal_p_direct()
+            # 判断收敛条件
+            # 至少需要算两次迭代
             if len(self.p_in_ans) >= 2:
+                # 针对静压孔压力值计算是否收敛
                 if abs((sum(self.p_in_ans[-1]) - sum(self.p_in_ans[-2])) / sum(self.p_in_ans[-1])) < 1e-8:
                     break
         self.plot_p_3d()
