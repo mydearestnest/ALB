@@ -1,89 +1,16 @@
 import numpy as np
-import scipy.integrate as intergrate
-from numba import jit, vectorize, float64
 
 
-# 设置单元x积分边界
-#@jit(nopython=True)
-def x_boundary(lx):
-    return [0, lx]
-
-
-# 设置单元z积分边界
-#@jit(nopython=True)
-def z_boundary(lz):
-    return [0, lz]
-
-
-# 计算局部刚度
-#@jit(nopython=True)
-def func_k(x, z, n, m, x0, z0, lr, lx, lz, e):
-    dxf1 = dzf1 = dxf2 = dzf2 = 0
-    if n == 0:
-        dxf1 = - (1 - z / lz) / lx
-        dzf1 = - (1 - x / lx) / lz
-    elif n == 1:
-        dxf1 = (1 - z / lz) / lx
-        dzf1 = -x / lz / lx
-    elif n == 2:
-        dxf1 = -z / lz / lx
-        dzf1 = (1 - x / lx) / lz
-    elif n == 3:
-        dxf1 = z / lz / lx
-        dzf1 = x / lz / lx
-
-    if m == 0:
-        dxf2 = - (1 - z / lz) / lx
-        dzf2 = - (1 - x / lx) / lz
-    elif m == 1:
-        dxf2 = (1 - z / lz) / lx
-        dzf2 = -x / lz / lx
-    elif m == 2:
-        dxf2 = -z / lz / lx
-        dzf2 = (1 - x / lx) / lz
-    elif m == 3:
-        dxf2 = z / lz / lx
-        dzf2 = x / lz / lx
-
-    h = 1 + e * np.cos(x + x0)
-    p1 = h ** 3 * (
-            lr ** 2 * dxf1 * dxf2 + dzf1 * dzf2)
-    return p1
-
-
-# 设置非齐次项函数
-#@jit(nopython=True)
-def func_f(x, z, n, x0, z0, lx, lz, e, vx):
-    f_shape = 0
-    if n == 0:
-        f_shape = (1 - z / lz) * (1 - x / lx)
-    elif n == 1:
-        f_shape = (1 - z / lz) * x / lx
-    elif n == 2:
-        f_shape = (1 - x / lx) * z / lz
-    elif n == 3:
-        f_shape = x * z / lz / lx
-    p1 = f_shape * e * np.sin(x + x0) * vx
-    return p1
-
-
-def nard_f(n, x0, z0, lx, lz, e, vx):
-    return intergrate.nquad(func_f, [x_boundary(lx), z_boundary(lz)],
-                            args=(n, x0, z0, lx, lz, e, vx))  # 将膜厚带入，进行局部非齐次项计算
-
-
-# def nard_k(n, m, x0, z0, lr, lx, lz, e):
-#     return intergrate.nquad(func_k, [x_boundary(lx), z_boundary(lz)],
-#                             args=(n, m, x0, z0, lr, lx, lz, e))
-
-#@jit(nopython=True)
+# @jit(nopython=True)
+# 直接计算非齐次项
 def direct_fe(lx, lz, vx, h0, h1, h2, h3):
     fe = np.array([(lz * vx * (2 * h0 - 2 * h1 + h2 - h3)) / 12, (lz * vx * (2 * h0 - 2 * h1 + h2 - h3)) / 12,
                    (lz * vx * (h0 - h1 + 2 * h2 - 2 * h3)) / 12, (lz * vx * (h0 - h1 + 2 * h2 - 2 * h3)) / 12, ])
     return fe
 
 
-#@jit(nopython=True)
+# @jit(nopython=True)
+# 直接计算刚度阵
 def direct_ke(lx, lz, lr, h0, h1, h2, h3):
     ke = np.array([[((h0 ** 3 * lr ** 2 * lz ** 2) / 8 + (h1 ** 3 * lr ** 2 * lz ** 2) / 8 + (
             h2 ** 3 * lr ** 2 * lz ** 2) / 24 + (h3 ** 3 * lr ** 2 * lz ** 2) / 24) / (lx * lz) + (
@@ -190,20 +117,108 @@ def direct_ke(lx, lz, lr, h0, h1, h2, h3):
     return ke
 
 
-#@jit(nopython=True)
+# @jit(nopython=True)
 def cal_h(nx, nz, e):
     x = np.linspace(0, 2 * np.pi, nx + 1)
-    h = 1 + e * np.cos(x)
+    h = 1 + e * np.cos(x + np.pi)
     h = h.repeat(nz + 1)
     h = h.reshape(nx + 1, nz + 1).T
     return h
 
 
-def load_input(filename='input.txt'):
-    return np.loadtxt(filename, comments='#', encoding='UTF-8')
+# 计算无量纲流量因数
+
+
+def load_input(filename='input'):
+    return np.loadtxt(filename, comments='#', encoding='UTF-8', delimiter=',')
     # comment为注释符号，默认为#
     # 这里注意使用该读取命令时指定编码encoding = ‘UTF-8’
 
 
-def save_output(output_p, filename='output_p.dat'):
-    np.savetxt(filename, output_p)
+# 读取txt文件输入参数后建立变量与变量名的字典
+def init_input(filename='input'):
+    input_data = load_input(filename[0])
+    args_name = ['e', 'vx', 'lr', 'lx', 'lz', 'nx', 'nz', 'u', 'c', 'pr', 'rho', 'r', 'l', 'cd', 'a0', 'ps']
+    init_args = {}
+    for i, arg_name in enumerate(args_name):
+        init_args[arg_name] = input_data[i]
+    input_data = load_input(filename[1])
+    args_name = ['orifice_x', 'orifice_y']
+    for i, arg_name in enumerate(args_name):
+        init_args[arg_name] = input_data[i]
+    return init_args
+
+
+# 节流孔位置输入
+# 设置单元x积分边界
+# @jit(nopython=True)
+# def x_boundary(lx):
+#     return [0, lx]
+
+
+# 设置单元z积分边界
+# @jit(nopython=True)
+# def z_boundary(lz):
+#     return [0, lz]
+
+
+# 计算局部刚度,暂不使用
+# @jit(nopython=True)
+# def func_k(x, z, n, m, x0, z0, lr, lx, lz, e):
+#     dxf1 = dzf1 = dxf2 = dzf2 = 0
+#     if n == 0:
+#         dxf1 = - (1 - z / lz) / lx
+#         dzf1 = - (1 - x / lx) / lz
+#     elif n == 1:
+#         dxf1 = (1 - z / lz) / lx
+#         dzf1 = -x / lz / lx
+#     elif n == 2:
+#         dxf1 = -z / lz / lx
+#         dzf1 = (1 - x / lx) / lz
+#     elif n == 3:
+#         dxf1 = z / lz / lx
+#         dzf1 = x / lz / lx
+#
+#     if m == 0:
+#         dxf2 = - (1 - z / lz) / lx
+#         dzf2 = - (1 - x / lx) / lz
+#     elif m == 1:
+#         dxf2 = (1 - z / lz) / lx
+#         dzf2 = -x / lz / lx
+#     elif m == 2:
+#         dxf2 = -z / lz / lx
+#         dzf2 = (1 - x / lx) / lz
+#     elif m == 3:
+#         dxf2 = z / lz / lx
+#         dzf2 = x / lz / lx
+#
+#     h = 1 + e * np.cos(x + x0)
+#     p1 = h ** 3 * (
+#             lr ** 2 * dxf1 * dxf2 + dzf1 * dzf2)
+#     return p1
+
+
+# 设置非齐次项函数
+# @jit(nopython=True)
+# def func_f(x, z, n, x0, z0, lx, lz, e, vx):
+#     f_shape = 0
+#     if n == 0:
+#         f_shape = (1 - z / lz) * (1 - x / lx)
+#     elif n == 1:
+#         f_shape = (1 - z / lz) * x / lx
+#     elif n == 2:
+#         f_shape = (1 - x / lx) * z / lz
+#     elif n == 3:
+#         f_shape = x * z / lz / lx
+#     p1 = f_shape * e * np.sin(x + x0) * vx
+#     return p1
+
+
+# def nard_f(n, x0, z0, lx, lz, e, vx):
+#     return intergrate.nquad(func_f, [x_boundary(lx), z_boundary(lz)],
+#                             args=(n, x0, z0, lx, lz, e, vx))  # 将膜厚带入，进行局部非齐次项计算
+
+
+# def nard_k(n, m, x0, z0, lr, lx, lz, e):
+#     return intergrate.nquad(func_k, [x_boundary(lx), z_boundary(lz)],
+#                             args=(n, m, x0, z0, lr, lx, lz, e))
