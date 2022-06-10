@@ -12,10 +12,10 @@ def main(filename='input'):
     LN_sys.crear_rect_elems()
     LN_sys.cal_h()
     LN_sys.cal_kf()
-    LN_sys.set_bondary()
+    LN_sys.boundary_setting_with_lagrange()
     LN_sys.cal_p_direct()
     LN_sys.plot_p_3d()
-    save_output(LN_sys.p)
+    save_output(LN_sys.p_result)
 
 
 if __name__ == '__main__':

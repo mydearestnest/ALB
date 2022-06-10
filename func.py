@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import integrate
 
 
 # @jit(nopython=True)
@@ -138,7 +139,7 @@ def load_input(filename='input'):
 # 读取txt文件输入参数后建立变量与变量名的字典
 def init_input(filename='input'):
     input_data = load_input(filename[0])
-    args_name = ['e', 'vx', 'lr', 'lx', 'lz', 'nx', 'nz', 'u', 'c', 'pr', 'rho', 'r', 'l', 'cd', 'a0', 'ps']
+    args_name = ['e', 'w', 'lx', 'lz', 'nx', 'nz', 'u', 'c', 'pr', 'rho', 'r', 'l', 'cd', 'a0', 'ps', 'g']
     init_args = {}
     for i, arg_name in enumerate(args_name):
         init_args[arg_name] = input_data[i]
@@ -149,6 +150,40 @@ def init_input(filename='input'):
     return init_args
 
 
+def load_capacity_cal_sp(system):
+    load_x = 0
+    load_y = 0
+    lx = system.lx
+    lz = system.lz
+    for i in range(len(system.elems)):
+        elem = system.elems[i]
+        p = [elem.nodes[j].p_result for j in range(elem.rank ** 2)]
+        x0 = elem.nodes[0].coords[0]
+        load_x += integrate.nquad(p_x_div, [[0, lx], [0, lz]], args=(lx, lz, p, x0))[0]
+        load_y += integrate.nquad(p_y_div, [[0, lx], [0, lz]], args=(lx, lz, p, x0))[0]
+    return load_x, load_y
+
+
+# 定义单元的插值函数，只要是节点上的变量都可以插值
+# 该插值使用矩形一阶单元
+# x,z是在单元的相对位置，范围为（0，lx），（0，lz）
+def element_interpolation(x, z, lx, lz, p):
+    f0 = (1 - z / lz) * (1 - x / lx)
+    f1 = (1 - z / lz) * x / lx
+    f2 = (1 - x / lx) * z / lz
+    f3 = x * z / lz / lx
+    p = f0 * p[0] + f1 * p[1] + f2 * p[2] + f3 * p[3]
+    return p
+
+
+# 定义全局x方向压力分量计算函数
+def p_x_div(x, z, lx, lz, p, x0):
+    return -element_interpolation(x, z, lx, lz, p) * np.sin(2 * (x + x0))
+
+
+# 定义全局y方向压力计算函数
+def p_y_div(x, z, lx, lz, p, x0):
+    return element_interpolation(x, z, lx, lz, p) * np.cos(2 * (x + x0))
 # 节流孔位置输入
 # 设置单元x积分边界
 # @jit(nopython=True)

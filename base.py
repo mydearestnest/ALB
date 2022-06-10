@@ -13,7 +13,7 @@ class Node:
         self._coords = coords  # 节点坐标
         self._dim = 2  # 节点维度
         self._h = 0  # 节点厚度
-        self._p = 1  # 节点压力
+        self._p = 0  # 节点压力
 
     # 调用节点编号
     @property
@@ -154,7 +154,7 @@ class Elem:
     def avg_p(self):
         avg_p = 0
         for n in range(4):
-            avg_p += self.nodes[n].p
+            avg_p += self.nodes[n].p_result
         self.avg_p = avg_p / 4
         return self.avg_p
 
@@ -174,8 +174,7 @@ class System:
         self.nz = np.int_(init_args['nz'])
         self.lx = init_args['lx'] / self.nx  # 定义单元长度
         self.lz = init_args['lz'] / self.nz
-        self.vx = init_args['vx']
-        self.lr = init_args['lr']
+        self.w = init_args['w']
         self.e = init_args['e']
         self.u = init_args['u']
         self.l = init_args['l']
@@ -188,10 +187,14 @@ class System:
         self.ps = init_args['ps']
         self.orifiec_x = init_args['orifice_x']
         self.orifiec_y = init_args['orifice_y']
+        self.g = init_args['g']
+        self.vx = 3 * self.u * (self.w * 2 * np.pi / 60) * self.l ** 2 / self.ps / self.c ** 2
+        self.lr = self.l / (2 * self.r)
+        self.freedoms_norank = (self.nx + 1) * (self.nz + 1)
 
     def _init_system_args(self):
         # self.k = np.zeros([(nx + 1) * (nz + 1), (nx + 1) * (nz + 1)])  # 定义刚度
-        self.k = sp.dok_matrix(((self.nx + 1) * (self.nz + 1), (self.nx + 1) * (self.nz + 1)), dtype=np.float32)
+        self.k_init = sp.dok_matrix(((self.nx + 1) * (self.nz + 1), (self.nx + 1) * (self.nz + 1)), dtype=np.float32)
         # 使用dok稀疏矩阵内存占用更少，但计算速度降低，主要时间用于组装
         self.f = np.zeros([(self.nx + 1) * (self.nz + 1)])  # 定义非齐次项
         self.nq = []  # 无量纲流量因数
@@ -199,18 +202,16 @@ class System:
         self.orifiec_node_no = []  # 节流孔节点位置
         # 输入初始化结束
         # 压力场初始化
-        self.p = np.ones_like(self.f)
+        self.p_result = np.zeros_like(self.f)
         # 液膜厚度初始化
-        self.h = None
+        self.h_result = None
         # 用于储存补充拉格朗日乘子矩阵
-        self.kc = None
-        self.fc = None
+        self.k_add_boundary = None
+        self.f_add_boundary = None
         # 用于储存节流孔入口压力计算结果
         self.p_in_ans = []
         # 用于储存节流孔入口压力初值
         self.p_in_init = []
-        # 当压差小于零0时所需要的压力值
-        self.pf = self.pr
 
     # 初始化网格，用于画图
     def _mesh_init(self):
@@ -262,32 +263,8 @@ class System:
     def noe(self):
         return len(self.elems)
 
-    # 小孔节流静压轴承计算
-    def hydrostatic_film_bearing_with_orifice(self):
-        self.creat_cal_dom()
-        self.cal_h()
-        self.cal_kf()
-        self.setting_orifce_position(self.orifiec_x, self.orifiec_y)  # 设置油源位置
-        for i in range(100):
-            self.set_bondary()        # 组装拉格朗日乘子阵
-            # self.add_fq()
-            self.add_fqs()
-            self.cal_p_direct()
-            # 判断收敛条件
-            # 至少需要算两次迭代
-            if len(self.p_in_ans) >= 2:
-                # 针对静压孔压力值计算是否收敛
-                if abs((sum(self.p_in_ans[-1]) - sum(self.p_in_ans[-2])) / sum(self.p_in_ans[-1])) < 1e-8:
-                    break
-        self.plot_p_3d()
-
-    # 纯动压轴承计算
-    def hydrodynamic_film_bearing(self):
-        self.creat_cal_dom()
-        self.cal_h()
-        self.cal_kf()
-        self.set_bondary()
-        self.cal_p_direct()
+        # 判断收敛条件
+        # 至少需要算两次迭代
 
     # 创建计算域
     def creat_cal_dom(self):
@@ -316,10 +293,10 @@ class System:
     def cal_kf(self):
         for el in self.elems:
             elem = self.elems[el]
-            h0 = elem.nodes[0].h
-            h1 = elem.nodes[1].h
-            h2 = elem.nodes[2].h
-            h3 = elem.nodes[3].h
+            h0 = elem.nodes[0].h_result
+            h1 = elem.nodes[1].h_result
+            h2 = elem.nodes[2].h_result
+            h3 = elem.nodes[3].h_result
             elem.ke = direct_ke(self.lx, self.lz, self.lr, h0, h1, h2, h3)
             elem.fe = direct_fe(self.lx, self.lz, self.vx, h0, h1, h2, h3)
             for n in range(4):
@@ -327,26 +304,86 @@ class System:
                 self.f[tol_n] += elem.fe[n]  # 组装进总体非齐次项向量
                 for m in range(4):
                     tol_m = elem.nodes[m].number
-                    self.k[tol_n, tol_m] += elem.ke[n, m]  # 组装总刚度矩阵，找到
+                    self.k_init[tol_n, tol_m] += elem.ke[n, m]  # 组装总刚度矩阵，找到
 
-    def set_bondary(self):
+    # 设置连续/周期边界条件
+    # nodes1与nodes2需要传入对应节点编号，且需要一一对应
+    # 返回拉格朗日乘子阵及其非齐次项
+    def set_continuity_boundary(self, nodes1, nodes2):
+        #  边界3：周期边界条件：p（0，0：NY）= p(NX,0:NY)
+        if len(nodes1) == len(nodes2):
+            nx = self.nx
+            nz = self.nz
+            q_nodes = (nx + 1) * (nz + 1)
+            r_nodes = len(nodes1)
+            kp3 = sp.dok_matrix((r_nodes, q_nodes), dtype=np.float32)
+            fp3 = np.zeros(r_nodes)
+            for i in range(r_nodes):
+                kp3[i, nodes1[i]] = 1  # 附加矩阵内，左侧边界置1
+                kp3[i, nodes2[i]] = -1  # 附加矩阵内，右侧边界置-1
+            return kp3, fp3
+        else:
+            print("错误！连续边界两侧节点数量需一致")
+
+    # 设置定压力边界条件
+    # nodes传入为节点编号
+    # 返回拉格朗日乘子阵及其非齐次项
+    def set_pressure_boundary(self, nodes, p_set='pr'):
+        if p_set == 'pr':
+            p_set = self.pr / self.ps  # 压力无量纲化
+        q_nodes = self.freedoms_norank
+        l_nodes = len(nodes)
+        kp1 = sp.dok_matrix((l_nodes, q_nodes), dtype=np.float32)
+        fp1 = np.zeros(l_nodes)
+        for i in range(l_nodes):
+            kp1[i, nodes[i]] = 1
+            fp1[i] = p_set
+        return kp1, fp1
+
+    # 将拉格朗日乘子阵组装进整体矩阵
+    def couple_boundary_matrix(self, kps, fps):
+        kp = sp.vstack(kps)  # 边界条件刚度阵组合
+        fp = np.hstack(fps)  # 附加矩阵非齐次项组合
+        self.k_add_boundary = sp.vstack((self.k_init, kp))  # 补充拉格朗日乘子刚度矩阵——下方
+        zeros_mat = sp.coo_matrix((len(fp), len(fp)))  # 补充刚度零阵
+        kp_t = sp.vstack((kp.T, zeros_mat))
+        self.k_add_boundary = sp.hstack((self.k_add_boundary, kp_t))  # 补充拉格朗日乘子刚度矩阵——右方
+        self.f_add_boundary = np.hstack((self.f, fp))  # 补充附加矩阵非齐次项
+
+    def boundarys_setting(self):
         nx = self.nx
         nz = self.nz
         #  边界1：p（0：NX，0）= 1
-        q_nodes = (nx + 1) * (nz + 1)
+        q_nodes = self.freedoms_norank
+        l_nodes = nx + 1
+        r_nodes = nz - 1
+        nodes1 = [i for i in range(l_nodes)]
+        nodes2 = [(nx + 1) * nz + i for i in range(l_nodes)]
+        kp1, fp1 = self.set_pressure_boundary(nodes1)
+        kp2, fp2 = self.set_pressure_boundary(nodes2)
+        nodes3 = [(i + 1) * (nx + 1) for i in range(r_nodes)]
+        nodes4 = [(i + 1) * (nx + 1) + nx for i in range(r_nodes)]
+        kp3, fp3 = self.set_continuity_boundary(nodes3, nodes4)
+        self.couple_boundary_matrix([kp1, kp2, kp3], [fp1, fp2, fp3])
+
+    def boundary_setting_with_lagrange(self):
+        nx = self.nx
+        nz = self.nz
+        #  边界1：p（0：NX，0）= 1
+        q_nodes = self.freedoms_norank
         l_nodes = nx + 1
         r_nodes = nz - 1
         kp1 = sp.dok_matrix((l_nodes, q_nodes), dtype=np.float32)
         fp1 = np.zeros(l_nodes)
         for i in range(l_nodes):
             kp1[i, i] = 1
-            fp1[i] = 1
+            fp1[i] = self.pr / self.ps
         #  边界2：p（0：NX，NY）= 1
         kp2 = sp.dok_matrix((l_nodes, q_nodes), dtype=np.float32)
         fp2 = np.zeros(l_nodes)
         for i in range(l_nodes):
             kp2[i, (nx + 1) * nz + i] = 1
-            fp2[i] = 1
+            fp2[i] = self.pr / self.ps
         #  边界3：周期边界条件：p（0，0：NY）= p(NX,0:NY)
         kp3 = sp.dok_matrix((r_nodes, q_nodes), dtype=np.float32)
         fp3 = np.zeros(r_nodes)
@@ -356,12 +393,12 @@ class System:
 
         kp = sp.vstack((kp1, kp2, kp3))  # 边界条件刚度阵组合
         fp = np.hstack((fp1, fp2, fp3))  # 附加矩阵非齐次项组合
-        self.kc = sp.vstack((self.k, kp))  # 补充拉格朗日乘子刚度矩阵——下方
+        self.k_add_boundary = sp.vstack((self.k_init, kp))  # 补充拉格朗日乘子刚度矩阵——下方
 
         zeros_mat = sp.coo_matrix(((2 * l_nodes + r_nodes), (2 * l_nodes + r_nodes)))  # 补充刚度零阵
         kp_t = sp.vstack((kp.T, zeros_mat))
-        self.kc = sp.hstack((self.kc, kp_t))  # 补充拉格朗日乘子刚度矩阵——右方
-        self.fc = np.hstack((self.f, fp))  # 补充附加矩阵非齐次项
+        self.k_add_boundary = sp.hstack((self.k_add_boundary, kp_t))  # 补充拉格朗日乘子刚度矩阵——右方
+        self.f_add_boundary = np.hstack((self.f, fp))  # 补充附加矩阵非齐次项
 
     # 计算厚度场
     def cal_h(self):
@@ -370,69 +407,59 @@ class System:
         hz = np.empty([self.nx + 1, self.nz + 1])
         for i in range(nx + 1):
             for j in range(nz + 1):
-                hz[i][j] = self.nodes[i + j * (nx + 1)].h = 1 + self.e * np.cos(i * self.lx)
+                hz[i][j] = self.nodes[i + j * (nx + 1)].h_result = 1 + self.e * np.cos(i * 2 * self.lx)
 
     # 计算压力场
     def cal_p_direct(self):
         # self.p = np.linalg.solve(self.k, self.f)
         # self.p = self.p[0:(self.nx + 1) * (self.nz + 1)].reshape(self.nz + 1, self.nx + 1)
-        sp_p = sp.csc_matrix(self.kc)
-        self.p = sl.spsolve(sp_p, self.fc)
+        sp_p = sp.csc_matrix(self.k_add_boundary)
+        self.p_result = sl.spsolve(sp_p, self.f_add_boundary)
         # 将计算后压力重新赋给各节点
         for i in range(len(self.nodes)):
-            self.nodes[i].p = self.p[i]
+            self.nodes[i].p_result = self.p_result[i]
         print('calculation of pressure is over')
         p_in_ans = []
         for node_no in self.orifiec_node_no:
-            p_in_ans.append(self.p[node_no])  # 将节流孔的计算压力值记录储存
+            p_in_ans.append(self.p_result[node_no])  # 将节流孔的计算压力值记录储存
         self.p_in_ans.append(p_in_ans)
 
     def cal_p_iter_newton(self):
         # 将流量项对入口压力的Jacobi矩阵与刚度阵相加，不过由于Jacobi矩阵项较少，因此各项单独加入刚度矩阵
         # 构成dp前的迭代矩阵
-        kp = sp.csc_matrix(self.kc)  # 迭代矩阵初始化sp_p = sp.csc_matrix(self.kc)
+        kp = sp.csc_matrix(self.k_add_boundary)  # 迭代矩阵初始化sp_p = sp.csc_matrix(self.kc)
+        # # 由于f组装拉格朗日乘子阵后形成的fc的shape发生变化，因此p与fc的维度可能不一致，需要补充增加p的维度
         for i, node_no in enumerate(self.orifiec_node_no):
-            q_dp = 12 * self.u * self.l ** 2 * self.cd * self.a0 / (self.r * self.l * self.pr * self.c ** 3) * np.sqrt(
-                0.5 / self.rho / (self.ps - self.p[node_no]))
+            dp = self.ps - self.ps * self.p_result[node_no]
+            q_dp = 12 * self.u * self.l ** 2 * self.cd * self.a0 / (
+                    2 * self.r * self.l * self.ps * self.c ** 3) * np.sqrt(
+                0.5 / self.rho / dp)
             kp[node_no, node_no] += q_dp
-        self.add_fqs()
-        fp = self.fc - self.kc @ self.p
+        fp = self.f_add_boundary - self.k_add_boundary @ self.p_result
         dp = sl.spsolve(kp, fp)
-        self.p = self.p + dp
+        # 更新压力
+        self.dp = dp
+        self.p_result = self.p_result + dp
+        p_in_ans = []
+        # 记录节流孔计算结果
+        for node_no in self.orifiec_node_no:
+            p_in_ans.append(self.p_result[node_no])  # 将节流孔的计算压力值记录储存
+        self.p_in_ans.append(p_in_ans)
+        # 更新各节点压力值
+        for i in range(len(self.nodes)):
+            self.nodes[i].p_result = self.p_result[self.nodes[i].number]
         return dp
 
     def setting_orifce_position(self, orifice_x, orifice_z):
-        if len(orifice_x) != len(orifice_z):
+        if isinstance(orifice_x, np.float) and isinstance(orifice_z, np.float):
+            orifice_No = int(orifice_z * self.nz) * (self.nx + 1) + int(orifice_x * self.nx)
+            self.orifiec_node_no.append(orifice_No)
+        elif len(orifice_x) != len(orifice_z):
             print('error!节流孔x方向坐标数量必须等于y方向坐标')
         else:
             for i in range(len(orifice_x)):
                 orifice_No = int(orifice_z[i] * self.nz) * (self.nx + 1) + int(orifice_x[i] * self.nx)
                 self.orifiec_node_no.append(orifice_No)
-
-    # 添加节流孔
-    # def add_orifices(self , position):
-    #     for
-    # 计算无量纲流量因子,添加静压源项
-    def add_fq(self):
-        middle_No = int(0.5 * self.nz) * (self.nx + 1) + int(0.5 * self.nx)  # 获得节流孔结点位置（中心）
-        node = self.nodes[middle_No]  # 找到节流孔对应结点
-        # 第一次计算没有两个压力值，无法使用比例分割法迭代
-        if len(self.p_in_init) == 0:
-            p_init = node.p
-        # 使用比例分割法，使下一次迭代的节流孔压力初始值为如下所示公式
-        else:
-            p_init = 1 / 10000 * (self.p_in_ans[-1] - self.p_in_init[-1]) + self.p_in_init[-1]
-        dp = self.ps - p_init * self.pr  # 计算压力差
-        # if dp < 0:
-        #     p_init = 1 / 200 * (self.p_in_ans[-1] - self.p_in_init[-1]) + self.p_in_init[-1]
-        #     dp = self.ps - p_init * self.pr  # 计算压力差
-        self.p_in_init.append(p_init)  # 添加节流孔压力初始值
-        a0 = self.a0  # 节流孔面积
-        self.q = q = self.cd * a0 * np.sqrt(2 * dp / self.rho)  # 节流孔流量
-        print(q)
-        self.nq = fq = 12 * self.u * self.l ** 2 * q / (self.pr * self.c ** 3 * self.r * self.l)  # 无量纲流量因数计算
-        # 添加流量的非齐次项
-        self.fc[middle_No] += fq  # 这里非齐次项为负，由推导获得
 
     #  计算无量纲流量因子,添加静压源项
     def add_fqs(self):
@@ -443,33 +470,36 @@ class System:
             node = self.nodes[node_no]  # 找到节流孔对应结点
             # 第一次计算没有两个压力值，无法使用比例分割法迭代
             if len(self.p_in_init) == 0:
-                p_init = node.p
+                p_init = node.p_result
             # 使用比例分割法，使下一次迭代的节流孔压力初始值为如下所示公式
             else:
-                p_init = 1 / 200 * (self.p_in_ans[-1][i] - self.p_in_init[-1][i]) + self.p_in_init[-1][i]
-            dp = self.ps - p_init * self.pr  # 计算压力差
-            # if dp < 0:
-            #     p_init = 1 / 200 * (self.p_in_ans[-1] - self.p_in_init[-1]) + self.p_in_init[-1]
-            #     dp = self.ps - p_init * self.pr  # 计算压力差
-            p_in_init.append(p_init)  # 添加节流孔压力初始值
+                p_init = 1 / self.g * (self.p_in_ans[-1][i] - self.p_in_init[-1][i]) + self.p_in_init[-1][i]
+            dp = self.ps - p_init * self.ps
+            # 对比例系数g设置指数系数
+            # 如果计算dp小于0，通过增加指数系数使得dp为正
+            k = 1
+            while dp < 0:
+                k += 0.1
+                p_init = 1 / (self.g ** k) * (self.p_in_ans[-1][i] - self.p_in_init[-1][i]) + self.p_in_init[-1][i]
+                dp = self.ps - p_init * self.ps
+            self.p_result[node_no] = p_init  # 将计算获得的节流孔初始值代入向量p内
+            p_in_init.append(p_init)  # 记录各节流孔压力初始值
             a0 = self.a0  # 节流孔面积
-            q = self.cd * a0 * np.sqrt(2 * dp / self.rho)  # 节流孔流量
+            q = self.cd * a0 * np.sqrt(2 * dp / self.rho)  # 小孔节流孔流量
             qs.append(q)
-            fq = 12 * self.u * self.l ** 2 * q / (self.pr * self.c ** 3 * self.r * self.l)  # 无量纲流量因数计算
+            fq = 12 * self.u * self.lr * q / (self.ps * self.c ** 3)  # 流量项计算
             nqs.append(fq)
-            # 添加流量的非齐次项
-            self.fc[node_no] += fq  # 这里非齐次项为正，由推导获得
-        self.p_in_init.append(p_in_init)
-        self.q.append(qs)
-        self.nq.append(nqs)
+            # 将流量项加入非齐次项
+            self.f_add_boundary[node_no] += fq  # 这里非齐次项为正，由推导获得
+        self.p_in_init.append(p_in_init)  # 将各次迭代前的节流孔初始值记录
+        self.q.append(qs)  # 将各次迭代前的流量记录
+        self.nq.append(nqs)  # 将各次迭代前的无量纲流量记录
         return nqs
-
-
 
     #  三维表面画图
     def plot_p_3d(self):
         ax = plt.axes(projection="3d")
-        p = self.p[0:(self.nx + 1) * (self.nz + 1)].reshape(self.nz + 1, self.nx + 1)
+        p = self.p_result[0:(self.nx + 1) * (self.nz + 1)].reshape(self.nz + 1, self.nx + 1)
         ax.plot_surface(self.X, self.Z, p,
                         rstride=1,  # rstride（row）指定行的跨度
                         cstride=1,  # cstride(column)指定列的跨度,
@@ -478,54 +508,5 @@ class System:
 
     # 存储压力数据
     def save_output_p(self, filename='output_p.dat'):
-        out_put_p = self.p[0:(self.nx + 1) * (self.nz + 1)].reshape(self.nz + 1, self.nx + 1)  # 将压力数据存为dat
+        out_put_p = self.p_result[0:(self.nx + 1) * (self.nz + 1)].reshape(self.nz + 1, self.nx + 1)  # 将压力数据存为dat
         np.savetxt(filename, out_put_p)
-# test_node = Node(np.array([1, 2]))
-# test_system = System(20, 20, 1, 1)
-# test_system.add_node(test_node)
-# test_element = Elem(test_node)
-# test_node1 = Node(np.array([1, 2]))
-# test_system.add_nodes(test_node, test_node1)
-# find_node = test_system.nodes[1]
-# test_element1 = Elem(test_node1)
-# test_system.add_elem(test_element)
-# test_system.add_elems(test_element, test_element1)
-# test_node3 = Node(np.array([1, 2]))
-# print(test_node3.coords)
-# test_node3.coords = np.array([3.4])
-# def set_bondary(self):
-#     nx = self.nx
-#     nz = self.nz
-#     #  对称边界条件设置
-#
-#     #  边界1：p（0：NX，0）= 1
-#     q_nodes = (nx + 1) * (nz + 1)
-#     l_nodes = nx + 1
-#     r_nodes = nz - 1
-#     kp1 = np.zeros((l_nodes, q_nodes))
-#     fp1 = np.zeros(l_nodes)
-#     for i in range(l_nodes):
-#         kp1[i][i] = 1
-#         fp1[i] = 1
-#     #  边界2：p（0：NX，NY）= 1
-#     kp2 = np.zeros((l_nodes, q_nodes))
-#     fp2 = np.zeros(l_nodes)
-#     for i in range(l_nodes):
-#         kp2[i][(nx + 1) * nz + i] = 1
-#         fp2[i] = 1
-#     #  边界3：周期边界条件：p（0，0：NY）=p(NX,0:NY)
-#     kp3 = np.zeros((r_nodes, q_nodes))
-#     fp3 = np.zeros(r_nodes)
-#     for i in range(r_nodes):
-#         kp3[i][(i + 1) * (nx + 1)] = 1  # 附加矩阵内，左侧边界置1
-#         kp3[i][(i + 1) * (nx + 1) + nx] = -1  # 附加矩阵内，右侧边界置-1
-#
-#     kp = np.row_stack((kp1, kp2, kp3))  # 边界条件刚度阵组合
-#
-#     fp = np.hstack((fp1, fp2, fp3))  # 附加矩阵非齐次项组合
-#     self.k = np.row_stack((self.k, kp))  # 补充拉格朗日乘子刚度矩阵——下方
-#
-#     zeros_mat = np.zeros(((2 * l_nodes + r_nodes), (2 * l_nodes + r_nodes)))  # 补充刚度零阵
-#     kp_t = np.row_stack((kp.T, zeros_mat))
-#     self.k = np.column_stack((self.k, kp_t))  # 补充拉格朗日乘子刚度矩阵——右方
-#     self.f = np.hstack((self.f, fp))  # 补充附加矩阵非齐次项
