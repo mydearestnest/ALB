@@ -188,7 +188,7 @@ class System:
         self.orifiec_x = init_args['orifice_x']
         self.orifiec_y = init_args['orifice_y']
         self.g = init_args['g']
-        self.vx = 3 * self.u * (self.w * 2 * np.pi / 60) * self.l ** 2 / self.ps / self.c ** 2
+        self.vx = 3 / 2 * self.u * (self.w * 2 * np.pi / 60) * self.l ** 2 / self.ps / self.c ** 2
         self.lr = self.l / (2 * self.r)
         self.freedoms_norank = (self.nx + 1) * (self.nz + 1)
 
@@ -407,7 +407,7 @@ class System:
         hz = np.empty([self.nx + 1, self.nz + 1])
         for i in range(nx + 1):
             for j in range(nz + 1):
-                hz[i][j] = self.nodes[i + j * (nx + 1)].h_result = 1 + self.e * np.cos(i * 2 * self.lx)
+                hz[i][j] = self.nodes[i + j * (nx + 1)].h_result = 1 + self.e * np.cos(i * self.lx)
 
     # 计算压力场
     def cal_p_direct(self):
@@ -431,8 +431,8 @@ class System:
         # # 由于f组装拉格朗日乘子阵后形成的fc的shape发生变化，因此p与fc的维度可能不一致，需要补充增加p的维度
         for i, node_no in enumerate(self.orifiec_node_no):
             dp = self.ps - self.ps * self.p_result[node_no]
-            q_dp = 12 * self.u * self.l ** 2 * self.cd * self.a0 / (
-                    2 * self.r * self.l * self.ps * self.c ** 3) * np.sqrt(
+            q_dp = 12 * self.u * self.lr * self.cd * self.a0 / (
+                      self.ps * self.c ** 3) * np.sqrt(
                 0.5 / self.rho / dp)
             kp[node_no, node_no] += q_dp
         fp = self.f_add_boundary - self.k_add_boundary @ self.p_result

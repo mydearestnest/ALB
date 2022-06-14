@@ -15,8 +15,8 @@ def static_performance_cal(system):
             x = np.array([elem.nodes[j].coords[0] for j in range(elem.rank ** 2)])
             x0 = np.sum(x) / 4
             avg_p = np.sum(p) / 4
-            load_x += - avg_p * lx * lz * np.sin(2 * x0)
-            load_y += avg_p * lx * lz * np.cos(2 * x0)
+            load_x += - avg_p * lx * lz * np.sin(x0)
+            load_y += avg_p * lx * lz * np.cos(x0)
         force_angel = np.arctan2(load_x,load_y)
         return load_x, load_y, force_angel
     else:
