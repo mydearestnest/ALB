@@ -3,6 +3,7 @@ from matplotlib import pyplot as plt
 from scipy import sparse as sp
 from scipy.sparse import linalg as sl
 from func import direct_fe, direct_ke
+from boundary import set_pressure_boundary, set_continuity_boundary
 
 '''定义全局节点,全局节点属性包括全局节点编号与全局节点坐标'''
 
@@ -297,48 +298,15 @@ class System:
             h1 = elem.nodes[1].h_result
             h2 = elem.nodes[2].h_result
             h3 = elem.nodes[3].h_result
-            elem.ke = direct_ke(self.lx, self.lz, self.lr, h0, h1, h2, h3)
-            elem.fe = direct_fe(self.lx, self.lz, self.vx, h0, h1, h2, h3)
+            h = [elem.nodes[i].h_result for i in range(elem.rank**2)]
+            elem.ke = direct_ke(self.lx, self.lz, self.lr, h)
+            elem.fe = direct_fe(self.lx, self.lz, self.vx, h)
             for n in range(4):
                 tol_n = elem.nodes[n].number
                 self.f[tol_n] += elem.fe[n]  # 组装进总体非齐次项向量
                 for m in range(4):
                     tol_m = elem.nodes[m].number
                     self.k_init[tol_n, tol_m] += elem.ke[n, m]  # 组装总刚度矩阵，找到
-
-    # 设置连续/周期边界条件
-    # nodes1与nodes2需要传入对应节点编号，且需要一一对应
-    # 返回拉格朗日乘子阵及其非齐次项
-    def set_continuity_boundary(self, nodes1, nodes2):
-        #  边界3：周期边界条件：p（0，0：NY）= p(NX,0:NY)
-        if len(nodes1) == len(nodes2):
-            nx = self.nx
-            nz = self.nz
-            q_nodes = (nx + 1) * (nz + 1)
-            r_nodes = len(nodes1)
-            kp3 = sp.dok_matrix((r_nodes, q_nodes), dtype=np.float32)
-            fp3 = np.zeros(r_nodes)
-            for i in range(r_nodes):
-                kp3[i, nodes1[i]] = 1  # 附加矩阵内，左侧边界置1
-                kp3[i, nodes2[i]] = -1  # 附加矩阵内，右侧边界置-1
-            return kp3, fp3
-        else:
-            print("错误！连续边界两侧节点数量需一致")
-
-    # 设置定压力边界条件
-    # nodes传入为节点编号
-    # 返回拉格朗日乘子阵及其非齐次项
-    def set_pressure_boundary(self, nodes, p_set='pr'):
-        if p_set == 'pr':
-            p_set = self.pr / self.ps  # 压力无量纲化
-        q_nodes = self.freedoms_norank
-        l_nodes = len(nodes)
-        kp1 = sp.dok_matrix((l_nodes, q_nodes), dtype=np.float32)
-        fp1 = np.zeros(l_nodes)
-        for i in range(l_nodes):
-            kp1[i, nodes[i]] = 1
-            fp1[i] = p_set
-        return kp1, fp1
 
     # 将拉格朗日乘子阵组装进整体矩阵
     def couple_boundary_matrix(self, kps, fps):
@@ -357,13 +325,18 @@ class System:
         q_nodes = self.freedoms_norank
         l_nodes = nx + 1
         r_nodes = nz - 1
+        #  获取轴承两端节点编号
         nodes1 = [i for i in range(l_nodes)]
         nodes2 = [(nx + 1) * nz + i for i in range(l_nodes)]
-        kp1, fp1 = self.set_pressure_boundary(nodes1)
-        kp2, fp2 = self.set_pressure_boundary(nodes2)
+        #  根据节点两端编号，将两侧节点设置为所设定的无量纲压力值，若不输入压力默认为0.5
+        kp1, fp1 = set_pressure_boundary(q_nodes, nodes1, p_set=self.pr / self.ps)
+        kp2, fp2 = set_pressure_boundary(q_nodes, nodes2, p_set=self.pr / self.ps)
+        #  获取连续边界上的节点编号
         nodes3 = [(i + 1) * (nx + 1) for i in range(r_nodes)]
         nodes4 = [(i + 1) * (nx + 1) + nx for i in range(r_nodes)]
-        kp3, fp3 = self.set_continuity_boundary(nodes3, nodes4)
+        #  设置连续边界
+        kp3, fp3 = set_continuity_boundary(q_nodes, nodes3, nodes4)
+        #  将边界条件组装进入矩阵中
         self.couple_boundary_matrix([kp1, kp2, kp3], [fp1, fp2, fp3])
 
     def boundary_setting_with_lagrange(self):
@@ -432,7 +405,7 @@ class System:
         for i, node_no in enumerate(self.orifiec_node_no):
             dp = self.ps - self.ps * self.p_result[node_no]
             q_dp = 12 * self.u * self.lr * self.cd * self.a0 / (
-                      self.ps * self.c ** 3) * np.sqrt(
+                    self.ps * self.c ** 3) * np.sqrt(
                 0.5 / self.rho / dp)
             kp[node_no, node_no] += q_dp
         fp = self.f_add_boundary - self.k_add_boundary @ self.p_result
