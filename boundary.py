@@ -3,9 +3,10 @@ import scipy.sparse as sp
 
 
 def reynold_boundary(system):
+    p_set = system.pr / system.ps
     for i in range(len(system.p_result)):
-        if system.p_result[i] < 0:
-            system.p_result[i] = 0
+        if system.p_result[i] < p_set:
+            system.p_result[i] = p_set
 
 
 # 设置连续/周期边界条件

@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from func import load_input, init_input
 
 
-def main(filename='input'):
+def main(filename='input.txt'):
     init_args = init_input(filename)
     LN_sys = System(init_args)
     LN_sys.creat_rect_nodes()

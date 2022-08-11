@@ -1,11 +1,10 @@
 from base import System
-from func import init_input,load_capacity_cal_sp
+from func import init_input, load_capacity_cal_sp
 from postprocess import static_performance_cal
 import model
 import time
 
-filename = ['input', 'orifice_position']
-init_args = init_input(filename)
+init_args = init_input()
 LN_sys = System(init_args)
 old_time = time.time()
 model.hydrostatic_with_newton_and_reynold(LN_sys)

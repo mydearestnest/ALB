@@ -5,16 +5,24 @@ from scipy import integrate
 # @jit(nopython=True)
 # 直接计算非齐次项
 def direct_fe(lx, lz, vx, h):
-    h0 = h[0]; h1 = h[1]; h2 = h[2]; h3 = h[3]
-    fe = np.array([(lz * vx * (2 * h0 - 2 * h1 + h2 - h3)) / 12, (lz * vx * (2 * h0 - 2 * h1 + h2 - h3)) / 12,
-                   (lz * vx * (h0 - h1 + 2 * h2 - 2 * h3)) / 12, (lz * vx * (h0 - h1 + 2 * h2 - 2 * h3)) / 12, ])
+    h0 = h[0];
+    h1 = h[1];
+    h2 = h[2];
+    h3 = h[3]
+    # fe = np.array([(lz * vx * (2 * h0 - 2 * h1 + h2 - h3)) / 12, (lz * vx * (2 * h0 - 2 * h1 + h2 - h3)) / 12,
+    #                (lz * vx * (h0 - h1 + 2 * h2 - 2 * h3)) / 12, (lz * vx * (h0 - h1 + 2 * h2 - 2 * h3)) / 12, ])
+    fe = np.array([-(lz * vx * (2 * h0 + 2 * h1 + h2 + h3)) / 12, (lz * vx * (2 * h0 + 2 * h1 + h2 + h3)) / 12,
+                   -(lz * vx * (h0 + h1 + 2 * h2 + 2 * h3)) / 12, (lz * vx * (h0 + h1 + 2 * h2 + 2 * h3)) / 12, ])
     return fe
 
 
 # @jit(nopython=True)
 # 直接计算刚度阵
 def direct_ke(lx, lz, lr, h):
-    h0 = h[0]; h1 = h[1]; h2 = h[2]; h3 = h[3]
+    h0 = h[0];
+    h1 = h[1];
+    h2 = h[2];
+    h3 = h[3]
     ke = np.array([[((h0 ** 3 * lr ** 2 * lz ** 2) / 8 + (h1 ** 3 * lr ** 2 * lz ** 2) / 8 + (
             h2 ** 3 * lr ** 2 * lz ** 2) / 24 + (h3 ** 3 * lr ** 2 * lz ** 2) / 24) / (lx * lz) + (
                             lx * (h0 ** 3 / 8 + h1 ** 3 / 24 + h2 ** 3 / 8 + h3 ** 3 / 24)) / lz,
@@ -96,23 +104,28 @@ def cal_h(nx, nz, e):
 # 计算无量纲流量因数
 
 
-def load_input(filename='input'):
+def load_input(filename='input.txt'):
     return np.loadtxt(filename, comments='#', encoding='UTF-8', delimiter=',')
     # comment为注释符号，默认为#
     # 这里注意使用该读取命令时指定编码encoding = ‘UTF-8’
 
 
 # 读取txt文件输入参数后建立变量与变量名的字典
-def init_input(filename='input'):
+def init_input(filename=None):
+    if filename is None:
+        filename = ['config/input.txt', 'config/orifice_position.txt']
     input_data = load_input(filename[0])
-    args_name = ['e', 'w', 'lx', 'lz', 'nx', 'nz', 'u', 'c', 'pr', 'rho', 'r', 'l', 'cd', 'a0', 'ps', 'g']
+    args_name = ['e', 'w', 'lx', 'lz', 'nx', 'nz', 'u', 'c', 'pr', 'rho', 'r', 'l', 'cd', 'a0', 'ps', 'g', 'k']
     init_args = {}
     for i, arg_name in enumerate(args_name):
         init_args[arg_name] = input_data[i]
     input_data = load_input(filename[1])
     args_name = ['orifice_x', 'orifice_y']
     for i, arg_name in enumerate(args_name):
-        init_args[arg_name] = input_data[i]
+        if len(input_data) != 0:
+            init_args[arg_name] = input_data[i]
+        else:
+            init_args[arg_name] = None
     return init_args
 
 
@@ -123,7 +136,7 @@ def load_capacity_cal_sp(system):
     lz = system.lz
     for i in range(len(system.elems)):
         elem = system.elems[i]
-        p = [elem.nodes[j].p_result for j in range(elem.rank ** 2)]
+        p = [elem.nodes[j].p for j in range(elem.rank ** 2)]
         x0 = elem.nodes[0].coords[0]
         load_x += integrate.nquad(p_x_div, [[0, lx], [0, lz]], args=(lx, lz, p, x0))[0]
         load_y += integrate.nquad(p_y_div, [[0, lx], [0, lz]], args=(lx, lz, p, x0))[0]
@@ -150,6 +163,7 @@ def p_x_div(x, z, lx, lz, p, x0):
 # 定义全局y方向压力计算函数
 def p_y_div(x, z, lx, lz, p, x0):
     return element_interpolation(x, z, lx, lz, p) * np.cos(2 * (x + x0))
+
 # 节流孔位置输入
 # 设置单元x积分边界
 # @jit(nopython=True)
