@@ -283,9 +283,12 @@ class System(BaseSystem):
     #  只有在使用add_fqs输入method！=direct才使用，仅针对供油孔处流场压力变化迭代初始值
     def ip_init(self):
         for i, node_no in enumerate(self.orifiec_node_no):
+            node = self.nodes[node_no]
             if len(self.p_in_init) == 0:
-                p_init = []
-                p_init.append()
+                p_init = node.p
+                # 使用比例分割法，使下一次迭代的节流孔压力初始值为如下所示公式
+            else:
+                p_init = 1 / g * (self.p_in_ans[-1][i] - self.p_in_init[-1][i]) + self.p_in_init[-1][i]
 
 
     #  计算无量纲流量因子,添加静压源项
