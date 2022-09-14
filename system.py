@@ -56,16 +56,12 @@ class System(BaseSystem):
         # 压力场初始化
         self.p_result = np.zeros_like(self.f)
         # 用于储存上一步的压力值
-        self.p_old = np.zeros_like(self.f)
+        self.p_init = None
         # 液膜厚度初始化
         self.h_result = None
         # 用于储存补充拉格朗日乘子矩阵
         self.k_add_boundary = None
         self.f_add_boundary = None
-        # 用于储存节流孔入口压力计算结果
-        self.p_in_ans = []
-        # 用于储存节流孔入口压力初值
-        self.p_in_init = []
 
     def _init_info_args(self):
         self.start_time = time.time()
@@ -225,22 +221,15 @@ class System(BaseSystem):
 
     # 计算压力场
     def cal_p_direct(self):
-        # 将用于迭代的压力进行存储
-        self.p_old = self.p_result
         sp_p = sp.csc_matrix(self.k_add_boundary)
         self.p_result = sl.spsolve(sp_p, self.f_add_boundary)
         # 将计算后压力重新赋给各节点
         for i in range(len(self.nodes)):
             self.nodes[i].p = self.p_result[i]
         print('calculation of pressure is over')
-        p_in_ans = []
-        for node_no in self.orifiec_node_no:
-            p_in_ans.append(self.p_result[node_no])  # 将节流孔的计算压力值记录储存
-        self.p_in_ans.append(p_in_ans)
+
 
     def cal_p_iter_newton(self):
-        # 将用于迭代的压力进行存储
-        self.p_old = self.p_result
         # 将流量项对入口压力的Jacobi矩阵与刚度阵相加，不过由于Jacobi矩阵项较少，因此各项单独加入刚度矩阵
         # 构成dp前的迭代矩阵
         kp = sp.csc_matrix(self.k_add_boundary)  # 迭代矩阵初始化sp_p = sp.csc_matrix(self.kc)
@@ -254,17 +243,11 @@ class System(BaseSystem):
         fp = self.f_add_boundary - self.k_add_boundary @ self.p_result
         dp = sl.spsolve(kp, fp)
         # 更新压力
-        self.dp = dp
         self.p_result = self.p_result + dp
-        p_in_ans = []
-        # 记录节流孔计算结果
-        for node_no in self.orifiec_node_no:
-            p_in_ans.append(self.p_result[node_no])  # 将节流孔的计算压力值记录储存
-        self.p_in_ans.append(p_in_ans)
         # 更新各节点压力值
         for i in range(len(self.nodes)):
             self.nodes[i].p = self.p_result[self.nodes[i].number]
-        return dp
+        return True
 
     def setting_orifce_position(self, orifice_x, orifice_z):
         if orifice_x is None and orifice_z is None:
@@ -282,14 +265,11 @@ class System(BaseSystem):
     #  通过松弛因子/比例系数调整迭代初始值
     #  只有在使用add_fqs输入method！=direct才使用，仅针对供油孔处流场压力变化迭代初始值
     def ip_init(self):
-        for i, node_no in enumerate(self.orifiec_node_no):
-            node = self.nodes[node_no]
-            if len(self.p_in_init) == 0:
-                p_init = node.p
-                # 使用比例分割法，使下一次迭代的节流孔压力初始值为如下所示公式
-            else:
-                p_init = 1 / g * (self.p_in_ans[-1][i] - self.p_in_init[-1][i]) + self.p_in_init[-1][i]
-
+        if self.p_init is None:
+            self.p_init = np.zeros(self.f)
+        else:
+            for i, node_no in enumerate(self.orifiec_node_no):
+                p_in_init = self.p_init[node_no] + 1/self.g[i]
 
     #  计算无量纲流量因子,添加静压源项
     #  输入为method方法名，以及相关参数
@@ -300,8 +280,8 @@ class System(BaseSystem):
         if method == 'orifice':
             nqs = []  # 本次无量纲流量暂存列表
             for i, node_no in enumerate(self.orifiec_node_no):
-                p_init = self.p_in_init[-1][i]
-                dp = self.ps - p_init * self.ps
+                p_in_init = self.p_init[node_no]
+                dp = self.ps - p_in_init * self.ps
                 fq = self.cal_fq(dp)
                 nqs.append(fq)
                 # 将流量项加入非齐次项
@@ -347,7 +327,7 @@ class System(BaseSystem):
 
     #  残差计算
     def cal_error(self):
-        dp = self.p_old[0:self.freedoms_norank] - self.p_result[0:self.freedoms_norank]
+        dp = self.p_init[0:self.freedoms_norank] - self.p_result[0:self.freedoms_norank]
         error = np.abs((np.sum(dp)) / np.sum(self.p_result[0:self.freedoms_norank]))
         return error
 
