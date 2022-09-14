@@ -1,4 +1,4 @@
-from base import System
+from system import System
 import numpy as np
 
 
@@ -17,7 +17,7 @@ def static_performance_cal(system):
             avg_p = np.sum(p) / 4
             load_x += avg_p * lx * lz * np.sin(x0)
             load_y += -avg_p * lx * lz * np.cos(x0)
-        force_angel = np.arctan2(load_x,load_y)
+        force_angel = np.arctan2(load_x, load_y)
         return load_x, load_y, force_angel
     else:
         print('错误！请将系统传入该函数内')

@@ -1,6 +1,7 @@
 import boundary
-from base import System
+from system import System
 import numpy as np
+from scipy import sparse as sp
 
 
 # 纯动压轴承计算
@@ -66,5 +67,18 @@ def hydrostatic_with_newton_and_reynold(system, iter_number=200, error_set=1e-8)
                 break
         system.plot_p_3d()
         system.p_result = system.p_result[0:system.freedoms_norank]
+        system.cal_p_finshed = True
     else:
         print('错误！请传入系统对象')
+
+
+# 动态特性计算模块
+def dynamic_char_with_orifice(system, iter_number=200, error_set=1e-8):
+    # 必须完成压力计算才可执行动态特性计算
+    if system.cal_p_finshed is True:
+        # 建立adxc稀疏空矩阵
+        system.adxc = sp.dok_matrix((system.freedoms_norank,system.freedoms_norank), dtype=np.float32)
+
+        pass
+    else:
+        print('请至少一次计算压力场')

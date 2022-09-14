@@ -1,4 +1,4 @@
-from base import System
+from system import System
 from func import init_input, load_capacity_cal_sp
 from postprocess import static_performance_cal
 import model
@@ -15,5 +15,3 @@ load = static_performance_cal(LN_sys)
 print('承载力：', load)
 new_time = time.time()
 print('运行时间：', new_time-old_time)
-
-

@@ -4,10 +4,10 @@ from scipy import integrate
 
 # @jit(nopython=True)
 # 直接计算非齐次项
-def direct_fe(lx, lz, vx, h):
-    h0 = h[0];
-    h1 = h[1];
-    h2 = h[2];
+def direct_fe(lz, vx, h):
+    h0 = h[0]
+    h1 = h[1]
+    h2 = h[2]
     h3 = h[3]
     # fe = np.array([(lz * vx * (2 * h0 - 2 * h1 + h2 - h3)) / 12, (lz * vx * (2 * h0 - 2 * h1 + h2 - h3)) / 12,
     #                (lz * vx * (h0 - h1 + 2 * h2 - 2 * h3)) / 12, (lz * vx * (h0 - h1 + 2 * h2 - 2 * h3)) / 12, ])
@@ -19,9 +19,9 @@ def direct_fe(lx, lz, vx, h):
 # @jit(nopython=True)
 # 直接计算刚度阵
 def direct_ke(lx, lz, lr, h):
-    h0 = h[0];
-    h1 = h[1];
-    h2 = h[2];
+    h0 = h[0]
+    h1 = h[1]
+    h2 = h[2]
     h3 = h[3]
     ke = np.array([[((h0 ** 3 * lr ** 2 * lz ** 2) / 8 + (h1 ** 3 * lr ** 2 * lz ** 2) / 8 + (
             h2 ** 3 * lr ** 2 * lz ** 2) / 24 + (h3 ** 3 * lr ** 2 * lz ** 2) / 24) / (lx * lz) + (
@@ -92,6 +92,297 @@ def direct_ke(lx, lz, lr, h):
     return ke
 
 
+# 计算A对xc的偏导矩阵
+# 输入参数lx，lz，lr，h，x0
+def cal_adxc(lx, lz, lr, h, x0, ):
+    h0 = h[0]
+    h1 = h[1]
+    h2 = h[2]
+    h3 = h[3]
+    adxc = [[(lz * (36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(x0) - 36 * h2 ** 2 * np.sin(
+        x0) + 36 * h3 ** 2 * np.sin(x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+        lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(lx + x0) + 12 * h1 ** 2 * lx * np.cos(
+        lx + x0) + 12 * h3 ** 2 * lx * np.cos(lx + x0) - 36 * h0 ** 2 * lx * np.cos(x0) + 24 * h1 ** 2 * lx * np.cos(
+        x0) - 36 * h2 ** 2 * lx * np.cos(x0) + 24 * h3 ** 2 * lx * np.cos(x0) - 3 * h0 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + 3 * h1 ** 2 * lr ** 2 * np.sin(lx + x0) - h2 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + h3 ** 2 * lr ** 2 * np.sin(lx + x0) + 6 * h0 ** 2 * lx ** 3 * np.cos(
+        x0) + 6 * h2 ** 2 * lx ** 3 * np.cos(x0) + 3 * h0 ** 2 * lr ** 2 * np.sin(x0) - 3 * h1 ** 2 * lr ** 2 * np.sin(
+        x0) + h2 ** 2 * lr ** 2 * np.sin(x0) - h3 ** 2 * lr ** 2 * np.sin(x0) + 18 * h0 ** 2 * lx ** 2 * np.sin(
+        x0) - 6 * h1 ** 2 * lx ** 2 * np.sin(x0) + 18 * h2 ** 2 * lx ** 2 * np.sin(x0) - 6 * h3 ** 2 * lx ** 2 * np.sin(
+        x0) - 3 * h1 ** 2 * lr ** 2 * lx * np.cos(lx + x0) - h3 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) + 3 * h0 ** 2 * lr ** 2 * lx * np.cos(x0) + h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3), -(
+            lz * (36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(x0) - 36 * h2 ** 2 * np.sin(
+        x0) + 36 * h3 ** 2 * np.sin(x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+        lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(lx + x0) - 12 * h0 ** 2 * lx * np.cos(
+        lx + x0) + 24 * h1 ** 2 * lx * np.cos(lx + x0) - 12 * h2 ** 2 * lx * np.cos(
+        lx + x0) + 24 * h3 ** 2 * lx * np.cos(lx + x0) - 24 * h0 ** 2 * lx * np.cos(
+        x0) + 12 * h1 ** 2 * lx * np.cos(x0) - 24 * h2 ** 2 * lx * np.cos(x0) + 12 * h3 ** 2 * lx * np.cos(
+        x0) - 3 * h0 ** 2 * lr ** 2 * np.sin(lx + x0) + 3 * h1 ** 2 * lr ** 2 * np.sin(
+        lx + x0) - h2 ** 2 * lr ** 2 * np.sin(lx + x0) + h3 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + 6 * h1 ** 2 * lx ** 2 * np.sin(lx + x0) + 6 * h3 ** 2 * lx ** 2 * np.sin(
+        lx + x0) + 3 * h0 ** 2 * lr ** 2 * np.sin(x0) - 3 * h1 ** 2 * lr ** 2 * np.sin(
+        x0) + h2 ** 2 * lr ** 2 * np.sin(x0) - h3 ** 2 * lr ** 2 * np.sin(x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(
+        x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(x0) - 3 * h1 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) - h3 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + 3 * h0 ** 2 * lr ** 2 * lx * np.cos(
+        x0) + h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3), -(lz * (
+            36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(x0) - 36 * h2 ** 2 * np.sin(
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 x0) + 36 * h3 ** 2 * np.sin(x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+        lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(lx + x0) + 12 * h1 ** 2 * lx * np.cos(
+        lx + x0) + 12 * h3 ** 2 * lx * np.cos(lx + x0) - 36 * h0 ** 2 * lx * np.cos(
+        x0) + 24 * h1 ** 2 * lx * np.cos(x0) - 36 * h2 ** 2 * lx * np.cos(x0) + 24 * h3 ** 2 * lx * np.cos(
+        x0) + h0 ** 2 * lr ** 2 * np.sin(lx + x0) - h1 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + h2 ** 2 * lr ** 2 * np.sin(lx + x0) - h3 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + 6 * h0 ** 2 * lx ** 3 * np.cos(x0) + 6 * h2 ** 2 * lx ** 3 * np.cos(
+        x0) - h0 ** 2 * lr ** 2 * np.sin(x0) + h1 ** 2 * lr ** 2 * np.sin(x0) - h2 ** 2 * lr ** 2 * np.sin(
+        x0) + h3 ** 2 * lr ** 2 * np.sin(x0) + 18 * h0 ** 2 * lx ** 2 * np.sin(x0) - 6 * h1 ** 2 * lx ** 2 * np.sin(
+        x0) + 18 * h2 ** 2 * lx ** 2 * np.sin(x0) - 6 * h3 ** 2 * lx ** 2 * np.sin(
+        x0) + h1 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + h3 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) - h0 ** 2 * lr ** 2 * lx * np.cos(x0) - h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3), (
+                     lz * (36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(x0) - 36 * h2 ** 2 * np.sin(
+                 x0) + 36 * h3 ** 2 * np.sin(x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+                 lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(
+                 lx + x0) - 12 * h0 ** 2 * lx * np.cos(lx + x0) + 24 * h1 ** 2 * lx * np.cos(
+                 lx + x0) - 12 * h2 ** 2 * lx * np.cos(lx + x0) + 24 * h3 ** 2 * lx * np.cos(
+                 lx + x0) - 24 * h0 ** 2 * lx * np.cos(x0) + 12 * h1 ** 2 * lx * np.cos(
+                 x0) - 24 * h2 ** 2 * lx * np.cos(x0) + 12 * h3 ** 2 * lx * np.cos(x0) + h0 ** 2 * lr ** 2 * np.sin(
+                 lx + x0) - h1 ** 2 * lr ** 2 * np.sin(lx + x0) + h2 ** 2 * lr ** 2 * np.sin(
+                 lx + x0) - h3 ** 2 * lr ** 2 * np.sin(lx + x0) + 6 * h1 ** 2 * lx ** 2 * np.sin(
+                 lx + x0) + 6 * h3 ** 2 * lx ** 2 * np.sin(lx + x0) - h0 ** 2 * lr ** 2 * np.sin(
+                 x0) + h1 ** 2 * lr ** 2 * np.sin(x0) - h2 ** 2 * lr ** 2 * np.sin(x0) + h3 ** 2 * lr ** 2 * np.sin(
+                 x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(
+                 x0) + h1 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + h3 ** 2 * lr ** 2 * lx * np.cos(
+                 lx + x0) - h0 ** 2 * lr ** 2 * lx * np.cos(x0) - h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (
+                     4 * lx ** 3), ], [-(lz * (
+            36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(x0) - 36 * h2 ** 2 * np.sin(
+        x0) + 36 * h3 ** 2 * np.sin(x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+        lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(lx + x0) - 12 * h0 ** 2 * lx * np.cos(
+        lx + x0) + 24 * h1 ** 2 * lx * np.cos(lx + x0) - 12 * h2 ** 2 * lx * np.cos(
+        lx + x0) + 24 * h3 ** 2 * lx * np.cos(lx + x0) - 24 * h0 ** 2 * lx * np.cos(
+        x0) + 12 * h1 ** 2 * lx * np.cos(x0) - 24 * h2 ** 2 * lx * np.cos(x0) + 12 * h3 ** 2 * lx * np.cos(
+        x0) - 3 * h0 ** 2 * lr ** 2 * np.sin(lx + x0) + 3 * h1 ** 2 * lr ** 2 * np.sin(
+        lx + x0) - h2 ** 2 * lr ** 2 * np.sin(lx + x0) + h3 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + 6 * h1 ** 2 * lx ** 2 * np.sin(lx + x0) + 6 * h3 ** 2 * lx ** 2 * np.sin(
+        lx + x0) + 3 * h0 ** 2 * lr ** 2 * np.sin(x0) - 3 * h1 ** 2 * lr ** 2 * np.sin(
+        x0) + h2 ** 2 * lr ** 2 * np.sin(x0) - h3 ** 2 * lr ** 2 * np.sin(x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(
+        x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(x0) - 3 * h1 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) - h3 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + 3 * h0 ** 2 * lr ** 2 * lx * np.cos(
+        x0) + h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3), -(lz * (
+            36 * h0 ** 2 * np.sin(x0) - 36 * h1 ** 2 * np.sin(x0) + 36 * h2 ** 2 * np.sin(
+        x0) - 36 * h3 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(lx + x0) + 36 * h1 ** 2 * np.sin(
+        lx + x0) - 36 * h2 ** 2 * np.sin(lx + x0) + 36 * h3 ** 2 * np.sin(lx + x0) + 24 * h0 ** 2 * lx * np.cos(
+        lx + x0) - 36 * h1 ** 2 * lx * np.cos(lx + x0) + 24 * h2 ** 2 * lx * np.cos(
+        lx + x0) - 36 * h3 ** 2 * lx * np.cos(lx + x0) + 12 * h0 ** 2 * lx * np.cos(
+        x0) + 12 * h2 ** 2 * lx * np.cos(x0) + 6 * h1 ** 2 * lx ** 3 * np.cos(
+        lx + x0) + 6 * h3 ** 2 * lx ** 3 * np.cos(lx + x0) + 3 * h0 ** 2 * lr ** 2 * np.sin(
+        lx + x0) - 3 * h1 ** 2 * lr ** 2 * np.sin(lx + x0) + h2 ** 2 * lr ** 2 * np.sin(
+        lx + x0) - h3 ** 2 * lr ** 2 * np.sin(lx + x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(
+        lx + x0) - 18 * h1 ** 2 * lx ** 2 * np.sin(lx + x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(
+        lx + x0) - 18 * h3 ** 2 * lx ** 2 * np.sin(lx + x0) - 3 * h0 ** 2 * lr ** 2 * np.sin(
+        x0) + 3 * h1 ** 2 * lr ** 2 * np.sin(x0) - h2 ** 2 * lr ** 2 * np.sin(x0) + h3 ** 2 * lr ** 2 * np.sin(
+        x0) + 3 * h1 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + h3 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) - 3 * h0 ** 2 * lr ** 2 * lx * np.cos(x0) - h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3),
+                                       (lz * (36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(
+                                           x0) - 36 * h2 ** 2 * np.sin(x0) + 36 * h3 ** 2 * np.sin(
+                                           x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+                                           lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(
+                                           lx + x0) - 12 * h0 ** 2 * lx * np.cos(
+                                           lx + x0) + 24 * h1 ** 2 * lx * np.cos(
+                                           lx + x0) - 12 * h2 ** 2 * lx * np.cos(
+                                           lx + x0) + 24 * h3 ** 2 * lx * np.cos(
+                                           lx + x0) - 24 * h0 ** 2 * lx * np.cos(x0) + 12 * h1 ** 2 * lx * np.cos(
+                                           x0) - 24 * h2 ** 2 * lx * np.cos(x0) + 12 * h3 ** 2 * lx * np.cos(
+                                           x0) + h0 ** 2 * lr ** 2 * np.sin(lx + x0) - h1 ** 2 * lr ** 2 * np.sin(
+                                           lx + x0) + h2 ** 2 * lr ** 2 * np.sin(
+                                           lx + x0) - h3 ** 2 * lr ** 2 * np.sin(
+                                           lx + x0) + 6 * h1 ** 2 * lx ** 2 * np.sin(
+                                           lx + x0) + 6 * h3 ** 2 * lx ** 2 * np.sin(
+                                           lx + x0) - h0 ** 2 * lr ** 2 * np.sin(x0) + h1 ** 2 * lr ** 2 * np.sin(
+                                           x0) - h2 ** 2 * lr ** 2 * np.sin(x0) + h3 ** 2 * lr ** 2 * np.sin(
+                                           x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(
+                                           x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(
+                                           x0) + h1 ** 2 * lr ** 2 * lx * np.cos(
+                                           lx + x0) + h3 ** 2 * lr ** 2 * lx * np.cos(
+                                           lx + x0) - h0 ** 2 * lr ** 2 * lx * np.cos(
+                                           x0) - h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3), (lz * (
+                36 * h0 ** 2 * np.sin(x0) - 36 * h1 ** 2 * np.sin(x0) + 36 * h2 ** 2 * np.sin(
+            x0) - 36 * h3 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(lx + x0) + 36 * h1 ** 2 * np.sin(
+            lx + x0) - 36 * h2 ** 2 * np.sin(lx + x0) + 36 * h3 ** 2 * np.sin(lx + x0) + 24 * h0 ** 2 * lx * np.cos(
+            lx + x0) - 36 * h1 ** 2 * lx * np.cos(lx + x0) + 24 * h2 ** 2 * lx * np.cos(
+            lx + x0) - 36 * h3 ** 2 * lx * np.cos(lx + x0) + 12 * h0 ** 2 * lx * np.cos(
+            x0) + 12 * h2 ** 2 * lx * np.cos(x0) + 6 * h1 ** 2 * lx ** 3 * np.cos(
+            lx + x0) + 6 * h3 ** 2 * lx ** 3 * np.cos(lx + x0) - h0 ** 2 * lr ** 2 * np.sin(
+            lx + x0) + h1 ** 2 * lr ** 2 * np.sin(lx + x0) - h2 ** 2 * lr ** 2 * np.sin(
+            lx + x0) + h3 ** 2 * lr ** 2 * np.sin(lx + x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(
+            lx + x0) - 18 * h1 ** 2 * lx ** 2 * np.sin(lx + x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(
+            lx + x0) - 18 * h3 ** 2 * lx ** 2 * np.sin(lx + x0) + h0 ** 2 * lr ** 2 * np.sin(
+            x0) - h1 ** 2 * lr ** 2 * np.sin(x0) + h2 ** 2 * lr ** 2 * np.sin(x0) - h3 ** 2 * lr ** 2 * np.sin(
+            x0) - h1 ** 2 * lr ** 2 * lx * np.cos(lx + x0) - h3 ** 2 * lr ** 2 * lx * np.cos(
+            lx + x0) + h0 ** 2 * lr ** 2 * lx * np.cos(x0) + h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (
+                                               4 * lx ** 3), ], [-(lz * (
+            36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(x0) - 36 * h2 ** 2 * np.sin(
+        x0) + 36 * h3 ** 2 * np.sin(x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+        lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(lx + x0) + 12 * h1 ** 2 * lx * np.cos(
+        lx + x0) + 12 * h3 ** 2 * lx * np.cos(lx + x0) - 36 * h0 ** 2 * lx * np.cos(
+        x0) + 24 * h1 ** 2 * lx * np.cos(x0) - 36 * h2 ** 2 * lx * np.cos(x0) + 24 * h3 ** 2 * lx * np.cos(
+        x0) + h0 ** 2 * lr ** 2 * np.sin(lx + x0) - h1 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + h2 ** 2 * lr ** 2 * np.sin(lx + x0) - h3 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + 6 * h0 ** 2 * lx ** 3 * np.cos(x0) + 6 * h2 ** 2 * lx ** 3 * np.cos(
+        x0) - h0 ** 2 * lr ** 2 * np.sin(x0) + h1 ** 2 * lr ** 2 * np.sin(x0) - h2 ** 2 * lr ** 2 * np.sin(
+        x0) + h3 ** 2 * lr ** 2 * np.sin(x0) + 18 * h0 ** 2 * lx ** 2 * np.sin(x0) - 6 * h1 ** 2 * lx ** 2 * np.sin(
+        x0) + 18 * h2 ** 2 * lx ** 2 * np.sin(x0) - 6 * h3 ** 2 * lx ** 2 * np.sin(
+        x0) + h1 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + h3 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) - h0 ** 2 * lr ** 2 * lx * np.cos(x0) - h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3), (
+                                                                         lz * (36 * h1 ** 2 * np.sin(
+                                                                     x0) - 36 * h0 ** 2 * np.sin(
+                                                                     x0) - 36 * h2 ** 2 * np.sin(
+                                                                     x0) + 36 * h3 ** 2 * np.sin(
+                                                                     x0) + 36 * h0 ** 2 * np.sin(
+                                                                     lx + x0) - 36 * h1 ** 2 * np.sin(
+                                                                     lx + x0) + 36 * h2 ** 2 * np.sin(
+                                                                     lx + x0) - 36 * h3 ** 2 * np.sin(
+                                                                     lx + x0) - 12 * h0 ** 2 * lx * np.cos(
+                                                                     lx + x0) + 24 * h1 ** 2 * lx * np.cos(
+                                                                     lx + x0) - 12 * h2 ** 2 * lx * np.cos(
+                                                                     lx + x0) + 24 * h3 ** 2 * lx * np.cos(
+                                                                     lx + x0) - 24 * h0 ** 2 * lx * np.cos(
+                                                                     x0) + 12 * h1 ** 2 * lx * np.cos(
+                                                                     x0) - 24 * h2 ** 2 * lx * np.cos(
+                                                                     x0) + 12 * h3 ** 2 * lx * np.cos(
+                                                                     x0) + h0 ** 2 * lr ** 2 * np.sin(
+                                                                     lx + x0) - h1 ** 2 * lr ** 2 * np.sin(
+                                                                     lx + x0) + h2 ** 2 * lr ** 2 * np.sin(
+                                                                     lx + x0) - h3 ** 2 * lr ** 2 * np.sin(
+                                                                     lx + x0) + 6 * h1 ** 2 * lx ** 2 * np.sin(
+                                                                     lx + x0) + 6 * h3 ** 2 * lx ** 2 * np.sin(
+                                                                     lx + x0) - h0 ** 2 * lr ** 2 * np.sin(
+                                                                     x0) + h1 ** 2 * lr ** 2 * np.sin(
+                                                                     x0) - h2 ** 2 * lr ** 2 * np.sin(
+                                                                     x0) + h3 ** 2 * lr ** 2 * np.sin(
+                                                                     x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(
+                                                                     x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(
+                                                                     x0) + h1 ** 2 * lr ** 2 * lx * np.cos(
+                                                                     lx + x0) + h3 ** 2 * lr ** 2 * lx * np.cos(
+                                                                     lx + x0) - h0 ** 2 * lr ** 2 * lx * np.cos(
+                                                                     x0) - h2 ** 2 * lr ** 2 * lx * np.cos(
+                                                                     x0))) / (4 * lx ** 3), (lz * (
+            36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(x0) - 36 * h2 ** 2 * np.sin(
+        x0) + 36 * h3 ** 2 * np.sin(x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+        lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(lx + x0) + 12 * h1 ** 2 * lx * np.cos(
+        lx + x0) + 12 * h3 ** 2 * lx * np.cos(lx + x0) - 36 * h0 ** 2 * lx * np.cos(
+        x0) + 24 * h1 ** 2 * lx * np.cos(x0) - 36 * h2 ** 2 * lx * np.cos(x0) + 24 * h3 ** 2 * lx * np.cos(
+        x0) - h0 ** 2 * lr ** 2 * np.sin(lx + x0) + h1 ** 2 * lr ** 2 * np.sin(
+        lx + x0) - 3 * h2 ** 2 * lr ** 2 * np.sin(lx + x0) + 3 * h3 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + 6 * h0 ** 2 * lx ** 3 * np.cos(x0) + 6 * h2 ** 2 * lx ** 3 * np.cos(
+        x0) + h0 ** 2 * lr ** 2 * np.sin(x0) - h1 ** 2 * lr ** 2 * np.sin(x0) + 3 * h2 ** 2 * lr ** 2 * np.sin(
+        x0) - 3 * h3 ** 2 * lr ** 2 * np.sin(x0) + 18 * h0 ** 2 * lx ** 2 * np.sin(
+        x0) - 6 * h1 ** 2 * lx ** 2 * np.sin(x0) + 18 * h2 ** 2 * lx ** 2 * np.sin(
+        x0) - 6 * h3 ** 2 * lx ** 2 * np.sin(x0) - h1 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) - 3 * h3 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + h0 ** 2 * lr ** 2 * lx * np.cos(
+        x0) + 3 * h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3), -(lz * (
+            36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(x0) - 36 * h2 ** 2 * np.sin(
+        x0) + 36 * h3 ** 2 * np.sin(x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+        lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(lx + x0) - 12 * h0 ** 2 * lx * np.cos(
+        lx + x0) + 24 * h1 ** 2 * lx * np.cos(lx + x0) - 12 * h2 ** 2 * lx * np.cos(
+        lx + x0) + 24 * h3 ** 2 * lx * np.cos(lx + x0) - 24 * h0 ** 2 * lx * np.cos(
+        x0) + 12 * h1 ** 2 * lx * np.cos(x0) - 24 * h2 ** 2 * lx * np.cos(x0) + 12 * h3 ** 2 * lx * np.cos(
+        x0) - h0 ** 2 * lr ** 2 * np.sin(lx + x0) + h1 ** 2 * lr ** 2 * np.sin(
+        lx + x0) - 3 * h2 ** 2 * lr ** 2 * np.sin(lx + x0) + 3 * h3 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + 6 * h1 ** 2 * lx ** 2 * np.sin(lx + x0) + 6 * h3 ** 2 * lx ** 2 * np.sin(
+        lx + x0) + h0 ** 2 * lr ** 2 * np.sin(x0) - h1 ** 2 * lr ** 2 * np.sin(x0) + 3 * h2 ** 2 * lr ** 2 * np.sin(
+        x0) - 3 * h3 ** 2 * lr ** 2 * np.sin(x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(
+        x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(x0) - h1 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) - 3 * h3 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + h0 ** 2 * lr ** 2 * lx * np.cos(
+        x0) + 3 * h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3), ], [(lz * (
+            36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(x0) - 36 * h2 ** 2 * np.sin(
+        x0) + 36 * h3 ** 2 * np.sin(x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+        lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(lx + x0) - 12 * h0 ** 2 * lx * np.cos(
+        lx + x0) + 24 * h1 ** 2 * lx * np.cos(lx + x0) - 12 * h2 ** 2 * lx * np.cos(
+        lx + x0) + 24 * h3 ** 2 * lx * np.cos(lx + x0) - 24 * h0 ** 2 * lx * np.cos(
+        x0) + 12 * h1 ** 2 * lx * np.cos(x0) - 24 * h2 ** 2 * lx * np.cos(x0) + 12 * h3 ** 2 * lx * np.cos(
+        x0) + h0 ** 2 * lr ** 2 * np.sin(lx + x0) - h1 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + h2 ** 2 * lr ** 2 * np.sin(lx + x0) - h3 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + 6 * h1 ** 2 * lx ** 2 * np.sin(lx + x0) + 6 * h3 ** 2 * lx ** 2 * np.sin(
+        lx + x0) - h0 ** 2 * lr ** 2 * np.sin(x0) + h1 ** 2 * lr ** 2 * np.sin(x0) - h2 ** 2 * lr ** 2 * np.sin(
+        x0) + h3 ** 2 * lr ** 2 * np.sin(x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(
+        x0) + h1 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + h3 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) - h0 ** 2 * lr ** 2 * lx * np.cos(x0) - h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3), (
+                                                                                     lz * (
+                                                                                     36 * h0 ** 2 * np.sin(
+                                                                                 x0) - 36 * h1 ** 2 * np.sin(
+                                                                                 x0) + 36 * h2 ** 2 * np.sin(
+                                                                                 x0) - 36 * h3 ** 2 * np.sin(
+                                                                                 x0) - 36 * h0 ** 2 * np.sin(
+                                                                                 lx + x0) + 36 * h1 ** 2 * np.sin(
+                                                                                 lx + x0) - 36 * h2 ** 2 * np.sin(
+                                                                                 lx + x0) + 36 * h3 ** 2 * np.sin(
+                                                                                 lx + x0) + 24 * h0 ** 2 * lx * np.cos(
+                                                                                 lx + x0) - 36 * h1 ** 2 * lx * np.cos(
+                                                                                 lx + x0) + 24 * h2 ** 2 * lx * np.cos(
+                                                                                 lx + x0) - 36 * h3 ** 2 * lx * np.cos(
+                                                                                 lx + x0) + 12 * h0 ** 2 * lx * np.cos(
+                                                                                 x0) + 12 * h2 ** 2 * lx * np.cos(
+                                                                                 x0) + 6 * h1 ** 2 * lx ** 3 * np.cos(
+                                                                                 lx + x0) + 6 * h3 ** 2 * lx ** 3 * np.cos(
+                                                                                 lx + x0) - h0 ** 2 * lr ** 2 * np.sin(
+                                                                                 lx + x0) + h1 ** 2 * lr ** 2 * np.sin(
+                                                                                 lx + x0) - h2 ** 2 * lr ** 2 * np.sin(
+                                                                                 lx + x0) + h3 ** 2 * lr ** 2 * np.sin(
+                                                                                 lx + x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(
+                                                                                 lx + x0) - 18 * h1 ** 2 * lx ** 2 * np.sin(
+                                                                                 lx + x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(
+                                                                                 lx + x0) - 18 * h3 ** 2 * lx ** 2 * np.sin(
+                                                                                 lx + x0) + h0 ** 2 * lr ** 2 * np.sin(
+                                                                                 x0) - h1 ** 2 * lr ** 2 * np.sin(
+                                                                                 x0) + h2 ** 2 * lr ** 2 * np.sin(
+                                                                                 x0) - h3 ** 2 * lr ** 2 * np.sin(
+                                                                                 x0) - h1 ** 2 * lr ** 2 * lx * np.cos(
+                                                                                 lx + x0) - h3 ** 2 * lr ** 2 * lx * np.cos(
+                                                                                 lx + x0) + h0 ** 2 * lr ** 2 * lx * np.cos(
+                                                                                 x0) + h2 ** 2 * lr ** 2 * lx * np.cos(
+                                                                                 x0))) / (4 * lx ** 3), -(
+            lz * (36 * h1 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(x0) - 36 * h2 ** 2 * np.sin(
+        x0) + 36 * h3 ** 2 * np.sin(x0) + 36 * h0 ** 2 * np.sin(lx + x0) - 36 * h1 ** 2 * np.sin(
+        lx + x0) + 36 * h2 ** 2 * np.sin(lx + x0) - 36 * h3 ** 2 * np.sin(lx + x0) - 12 * h0 ** 2 * lx * np.cos(
+        lx + x0) + 24 * h1 ** 2 * lx * np.cos(lx + x0) - 12 * h2 ** 2 * lx * np.cos(
+        lx + x0) + 24 * h3 ** 2 * lx * np.cos(lx + x0) - 24 * h0 ** 2 * lx * np.cos(
+        x0) + 12 * h1 ** 2 * lx * np.cos(x0) - 24 * h2 ** 2 * lx * np.cos(x0) + 12 * h3 ** 2 * lx * np.cos(
+        x0) - h0 ** 2 * lr ** 2 * np.sin(lx + x0) + h1 ** 2 * lr ** 2 * np.sin(
+        lx + x0) - 3 * h2 ** 2 * lr ** 2 * np.sin(lx + x0) + 3 * h3 ** 2 * lr ** 2 * np.sin(
+        lx + x0) + 6 * h1 ** 2 * lx ** 2 * np.sin(lx + x0) + 6 * h3 ** 2 * lx ** 2 * np.sin(
+        lx + x0) + h0 ** 2 * lr ** 2 * np.sin(x0) - h1 ** 2 * lr ** 2 * np.sin(x0) + 3 * h2 ** 2 * lr ** 2 * np.sin(
+        x0) - 3 * h3 ** 2 * lr ** 2 * np.sin(x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(
+        x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(x0) - h1 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) - 3 * h3 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + h0 ** 2 * lr ** 2 * lx * np.cos(
+        x0) + 3 * h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (4 * lx ** 3), -(lz * (
+            36 * h0 ** 2 * np.sin(x0) - 36 * h1 ** 2 * np.sin(x0) + 36 * h2 ** 2 * np.sin(
+        x0) - 36 * h3 ** 2 * np.sin(x0) - 36 * h0 ** 2 * np.sin(lx + x0) + 36 * h1 ** 2 * np.sin(
+        lx + x0) - 36 * h2 ** 2 * np.sin(lx + x0) + 36 * h3 ** 2 * np.sin(lx + x0) + 24 * h0 ** 2 * lx * np.cos(
+        lx + x0) - 36 * h1 ** 2 * lx * np.cos(lx + x0) + 24 * h2 ** 2 * lx * np.cos(
+        lx + x0) - 36 * h3 ** 2 * lx * np.cos(lx + x0) + 12 * h0 ** 2 * lx * np.cos(
+        x0) + 12 * h2 ** 2 * lx * np.cos(x0) + 6 * h1 ** 2 * lx ** 3 * np.cos(
+        lx + x0) + 6 * h3 ** 2 * lx ** 3 * np.cos(lx + x0) + h0 ** 2 * lr ** 2 * np.sin(
+        lx + x0) - h1 ** 2 * lr ** 2 * np.sin(lx + x0) + 3 * h2 ** 2 * lr ** 2 * np.sin(
+        lx + x0) - 3 * h3 ** 2 * lr ** 2 * np.sin(lx + x0) + 6 * h0 ** 2 * lx ** 2 * np.sin(
+        lx + x0) - 18 * h1 ** 2 * lx ** 2 * np.sin(lx + x0) + 6 * h2 ** 2 * lx ** 2 * np.sin(
+        lx + x0) - 18 * h3 ** 2 * lx ** 2 * np.sin(lx + x0) - h0 ** 2 * lr ** 2 * np.sin(
+        x0) + h1 ** 2 * lr ** 2 * np.sin(x0) - 3 * h2 ** 2 * lr ** 2 * np.sin(x0) + 3 * h3 ** 2 * lr ** 2 * np.sin(
+        x0) + h1 ** 2 * lr ** 2 * lx * np.cos(lx + x0) + 3 * h3 ** 2 * lr ** 2 * lx * np.cos(
+        lx + x0) - h0 ** 2 * lr ** 2 * lx * np.cos(x0) - 3 * h2 ** 2 * lr ** 2 * lx * np.cos(x0))) / (
+                                                                                     4 * lx ** 3), ], ]
+    adxc = np.array(adxc)
+    return adxc
+
+
+#
+def cal_bdxc(lx, lz, vx, x0):
+    bdxc = [(lz * vx * (np.cos(lx + x0) - np.cos(x0))) / (2 * lx),
+            -(lz * vx * (np.cos(lx + x0) - np.cos(x0))) / (2 * lx),
+            (lz * vx * (np.cos(lx + x0) - np.cos(x0))) / (2 * lx),
+            -(lz * vx * (np.cos(lx + x0) - np.cos(x0))) / (2 * lx), ]
+    bdxc = np.array(bdxc)
+    return bdxc
+
+
 # @jit(nopython=True)
 def cal_h(nx, nz, e):
     x = np.linspace(0, 2 * np.pi, nx + 1)
@@ -99,6 +390,16 @@ def cal_h(nx, nz, e):
     h = h.repeat(nz + 1)
     h = h.reshape(nx + 1, nz + 1).T
     return h
+
+
+#  残差计算
+def cal_error(freedoms, **kwargs):
+    result = kwargs['result']
+    old = kwargs['old']
+    dp = result - old
+    error = np.sum(np.abs(dp[0:freedoms])) / np.sum(np.abs(result[0:freedoms]))
+
+    return error
 
 
 # 计算无量纲流量因数
