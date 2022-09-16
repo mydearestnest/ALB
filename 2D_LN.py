@@ -9,7 +9,7 @@ def main(filename='input.txt'):
     init_args = init_input(filename)
     LN_sys = System(init_args)
     LN_sys.creat_rect_nodes()
-    LN_sys.crear_rect_elems()
+    LN_sys.creat_rect_elems()
     LN_sys.cal_h()
     LN_sys.cal_kf()
     LN_sys.boundary_setting_with_lagrange()

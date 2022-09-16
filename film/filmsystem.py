@@ -3,18 +3,18 @@ from matplotlib import pyplot as plt
 from scipy import sparse as sp
 from scipy.sparse import linalg as sl
 import time
-from func import direct_fe, direct_ke
 from boundary import set_pressure_boundary, set_continuity_boundary
 from base import BaseSystem
-from node import Node
-from elem import Elem
+from film.filmnode import FilmNode
+from film.filmelem import FilmElem
 
 
 # 定义求解系统
 
-class System(BaseSystem):
+class FilmSystem(BaseSystem):
     def __init__(self, init_args):
         super().__init__()
+        self.init_args = init_args
         self._init_input_args(init_args)  # 初始化输入参数
         self._init_system_args()  # 初始化系统参数
         self._init_info_args()  # 初始化信息参数，包括程序开始时间与结束时间
@@ -54,7 +54,7 @@ class System(BaseSystem):
         self.orifiec_node_no = []  # 节流孔节点位置
         # 输入初始化结束
         # 压力场初始化
-        self.p_result = np.zeros_like(self.f)
+        self.p_result = np.ones_like(self.f)
         # 用于储存上一步的压力值
         self.p_init = None
         # 液膜厚度初始化
@@ -76,34 +76,39 @@ class System(BaseSystem):
     # 创建计算域
     def creat_cal_dom(self):
         self.creat_rect_nodes()
-        self.crear_rect_elems()
+        self.creat_rect_elems()
 
     # 创建矩形单元节点
     def creat_rect_nodes(self, p_set=0.5):
         for i in range(self.nz + 1):
             for j in range(self.nx + 1):
-                node = Node(np.array([j * self.lx, i * self.lz]))
+                node = FilmNode(np.array([j * self.lx, i * self.lz]))
                 node.p = p_set
                 self.add_node(node)
 
     # 创建矩形单元
-    def crear_rect_elems(self):
+    def creat_rect_elems(self):
         for i in range(self.nz):
             for j in range(self.nx):
                 nodes = []
                 for m in range(2):
                     for n in range(2):
                         nodes.append(self.nodes[(i + m) * (self.nx + 1) + j + n])
-                elem = Elem(nodes)
+                elem = FilmElem(nodes, lr=self.lr, lz=self.lz, vx=self.vx, lx=self.lx)
                 self.add_elem(elem)
+
+    # 计算每个单元的刚度矩阵与非齐次项
+    def cal_ekf(self):
+        for el in self.elems:
+            elem = self.elems[el]
+            elem.cal_ke()
+            elem.cal_fe()
 
     # 计算刚度阵与无量纲轴承数项并组装
     def cal_kf(self):
+        self.cal_ekf()
         for el in self.elems:
             elem = self.elems[el]
-            h = [elem.nodes[i].h for i in range(elem.rank ** 2)]
-            elem.ke = direct_ke(self.lx, self.lz, self.lr, h)
-            elem.fe = direct_fe(self.lz, self.vx, h)
             for n in range(4):
                 tol_n = elem.nodes[n].number
                 self.f[tol_n] += elem.fe[n]  # 组装进总体非齐次项向量
@@ -126,7 +131,7 @@ class System(BaseSystem):
             self.p_result = np.hstack((self.p_result, np.zeros(add_length)))
             print('已补充压力拉格朗日乘子')
 
-    def boundarys_setting(self):
+    def boundarys_setting(self, **keyargs):
         nx = self.nx
         nz = self.nz
         #  边界1：p（0：NX，0）= 1
@@ -137,8 +142,13 @@ class System(BaseSystem):
         nodes1 = [i for i in range(l_nodes)]
         nodes2 = [(nx + 1) * nz + i for i in range(l_nodes)]
         #  根据节点两端编号，将两侧节点设置为所设定的无量纲压力值，若不输入压力默认为0.5
-        kp1, fp1 = set_pressure_boundary(q_nodes, nodes1, p_set=self.pr / self.ps)
-        kp2, fp2 = set_pressure_boundary(q_nodes, nodes2, p_set=self.pr / self.ps)
+        if 'p_set' in keyargs.keys():
+            p_set = keyargs['p_set']
+            kp1, fp1 = set_pressure_boundary(q_nodes, nodes1, p_set=p_set)
+            kp2, fp2 = set_pressure_boundary(q_nodes, nodes2, p_set=p_set)
+        else:
+            kp1, fp1 = set_pressure_boundary(q_nodes, nodes1, p_set=self.pr/self.ps)
+            kp2, fp2 = set_pressure_boundary(q_nodes, nodes2, p_set=self.pr/self.ps)
         #  获取连续边界上的节点编号
         nodes3 = [(i + 1) * (nx + 1) for i in range(r_nodes)]
         nodes4 = [(i + 1) * (nx + 1) + nx for i in range(r_nodes)]
@@ -164,7 +174,7 @@ class System(BaseSystem):
         fp2 = np.zeros(l_nodes)
         for i in range(l_nodes):
             kp2[i, (nx + 1) * nz + i] = 1
-            fp2[i] = self.pr / self.ps
+            fp2[i] = self.pr/ self.ps
         #  边界3：周期边界条件：p（0，0：NY）= p(NX,0:NY)
         kp3 = sp.dok_matrix((r_nodes, q_nodes), dtype=np.float32)
         fp3 = np.zeros(r_nodes)
@@ -228,22 +238,26 @@ class System(BaseSystem):
             self.nodes[i].p = self.p_result[i]
         print('calculation of pressure is over')
 
-
+    #  使用牛顿迭代对压力进行计算
     def cal_p_iter_newton(self):
         # 将流量项对入口压力的Jacobi矩阵与刚度阵相加，不过由于Jacobi矩阵项较少，因此各项单独加入刚度矩阵
         # 构成dp前的迭代矩阵
         kp = sp.csc_matrix(self.k_add_boundary)  # 迭代矩阵初始化sp_p = sp.csc_matrix(self.kc)
-        # # 由于f组装拉格朗日乘子阵后形成的fc的shape发生变化，因此p与fc的维度可能不一致，需要补充增加p的维度
+        # 计算
         for i, node_no in enumerate(self.orifiec_node_no):
-            dp = self.ps - self.ps * self.p_result[node_no]
-            q_dp = 12 * self.u * self.lr * self.cd * self.a0 / (
-                    self.ps * self.c ** 3) * np.sqrt(
-                0.5 / self.rho / dp)
+            dp = self.ps - self.ps * self.p_init[node_no]
+            if dp <= 0:
+                q_dp = 0
+            else:
+                q_dp = 12 * self.u * self.lr * self.cd * self.a0 / (
+                        self.ps * self.c ** 3) * np.sqrt(
+                    0.5 / self.rho / dp)
             kp[node_no, node_no] += q_dp
-        fp = self.f_add_boundary - self.k_add_boundary @ self.p_result
+        temp = self.k_add_boundary.dot(self.p_init)
+        fp = self.f_add_boundary - temp
         dp = sl.spsolve(kp, fp)
         # 更新压力
-        self.p_result = self.p_result + dp
+        self.p_result = self.p_init + dp
         # 更新各节点压力值
         for i in range(len(self.nodes)):
             self.nodes[i].p = self.p_result[self.nodes[i].number]
@@ -266,17 +280,45 @@ class System(BaseSystem):
     #  只有在使用add_fqs输入method！=direct才使用，仅针对供油孔处流场压力变化迭代初始值
     def ip_init(self):
         if self.p_init is None:
-            self.p_init = np.zeros(self.f)
+            self.p_init = self.p_result
         else:
+            p_temp = self.p_result  # 用p_temp暂时储存修改后的初始值，最后赋给p_init
+            # 判断g的状态
+            # 如果g只有一个，就只调用一次
+            # 如果g是列表，按i调用
             for i, node_no in enumerate(self.orifiec_node_no):
-                p_in_init = self.p_init[node_no] + 1/self.g[i]
+                if self.g.any() is None:
+                    print('没有添加流量项')
+                    break
+                if isinstance(self.g, np.float64):
+                    g = self.g
+                elif isinstance(self.g, np.ndarray):
+                    g = self.g[i]
+                else:
+                    g = None
+                    print('比例因子设置错误！')
+                    break
+                # 使用比例分割法对p_init中的供油孔压力进行修改
+                p_in_init = self.p_init[node_no] + 1 / g * (self.p_result[node_no] - self.p_init[node_no])
+                dp = 1 - p_in_init
+                while dp < 0:
+                    if isinstance(self.g, np.float64):
+                        self.g = self.g ** self.k
+                        p_in_init = self.p_init[node_no] + 1 / self.g * (self.p_result[node_no] - self.p_init[node_no])
+                    elif isinstance(self.g, np.ndarray):
+                        self.g[i] = self.g[i] ** self.k
+                        p_in_init = self.p_init[node_no] + 1 / self.g[i] * (
+                                    self.p_result[node_no] - self.p_init[node_no])
+                    dp = 1 - p_in_init
+                p_temp[node_no] = p_in_init
+            self.p_init = p_temp
 
     #  计算无量纲流量因子,添加静压源项
     #  输入为method方法名，以及相关参数
     #  method为orifice时，将会调用config/orifice_position.txt内的供油孔位置参数添加油源项
     #  method为direct时，需要在**keys输入无量纲流量nqs，以及对应节点位置node_nos，最好多个供油孔，单个可能报错
     def add_fqs(self, method='orifice', **keys):
-        # 当输入为orifce时，调用小孔节流模型
+        # 当输入为orifice时，调用小孔节流模型
         if method == 'orifice':
             nqs = []  # 本次无量纲流量暂存列表
             for i, node_no in enumerate(self.orifiec_node_no):
@@ -301,6 +343,7 @@ class System(BaseSystem):
                 return False
 
     #  计算无量纲流量
+    #  输入为有量纲的压力差
     def cal_fq(self, dp):
         if dp > 0:
             cq = 12 * self.u * self.lr * self.cd * self.a0 / self.c ** 3 * np.sqrt(2 / self.ps / self.rho)
@@ -341,7 +384,14 @@ class System(BaseSystem):
                         cmap="rainbow")
         plt.show()
 
+
     # 存储压力数据
     def save_output_p(self, filename='output_p.dat'):
         out_put_p = self.p_result[0:(self.nx + 1) * (self.nz + 1)].reshape(self.nz + 1, self.nx + 1)  # 将压力数据存为dat
         np.savetxt(filename, out_put_p)
+
+    # 传递给动力系数计算系统的参数
+    def pass_dy(self):
+        keyargs = {'p_result': self.p_result, 'h_result': self.h_result, 'k_init': self.k_init,
+                   'init_args': self.init_args}
+        return keyargs

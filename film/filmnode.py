@@ -3,7 +3,7 @@ from base import BaseNode
 '''定义全局节点,全局节点属性包括全局节点编号与全局节点坐标'''
 
 
-class Node(BaseNode):
+class FilmNode(BaseNode):
     def __init__(self, coords, dim=2):
         super().__init__(coords, dim)
         self._h = 0  # 节点厚度
