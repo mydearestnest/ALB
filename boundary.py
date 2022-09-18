@@ -16,7 +16,7 @@ def set_continuity_boundary(freedoms, nodes1, nodes2):
     if len(nodes1) == len(nodes2):
         q_nodes = freedoms
         r_nodes = len(nodes1)
-        kp3 = sp.dok_matrix((r_nodes, q_nodes), dtype=np.float32)
+        kp3 = np.zeros((r_nodes, q_nodes), dtype=np.float32)
         fp3 = np.zeros(r_nodes)
         for i in range(r_nodes):
             kp3[i, nodes1[i]] = 1  # 附加矩阵内，左侧边界置1
@@ -34,7 +34,7 @@ def set_continuity_boundary(freedoms, nodes1, nodes2):
 def set_pressure_boundary(freedoms, nodes, p_set=0.5):
     q_nodes = freedoms
     l_nodes = len(nodes)
-    kp1 = sp.dok_matrix((l_nodes, q_nodes), dtype=np.float32)
+    kp1 = np.zeros((l_nodes, q_nodes), dtype=np.float32)
     fp1 = np.zeros(l_nodes)
     for i in range(l_nodes):
         kp1[i, nodes[i]] = 1

@@ -41,6 +41,7 @@ def hydrostatic_with_newton_and_reynold(system, iter_number=200, error_set=1e-8)
             print(i, ',', error)
             if error < error_set:
                 break
+        system.updata_node()
         system.plot_p_3d()
         system.p_result = system.p_result[0:system.freedoms_norank]
         system.cal_p_finshed = True
@@ -56,9 +57,11 @@ def dynamic_char(system):
     system.cal_h()
     tanks = np.loadtxt('config/tank.txt', comments='#', encoding='UTF-8', delimiter=',')
     system.add_h_tanks(tanks)
-    system.cal_f()
-    system.boundarys_setting(p_set=0)
     system.add_qds()
-    system.cal_p_direct()
-    system.cal_Kxx_Kyx()
+    for i in range(4):
+        system.cal_f(case=i)
+        system.boundarys_setting(p_set=0)
+        system.cal_p_direct()
+        system.updata_node()
+        system.cal_KC(case=i)
 

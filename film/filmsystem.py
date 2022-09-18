@@ -46,8 +46,7 @@ class FilmSystem(BaseSystem):
 
     def _init_system_args(self):
         # self.k = np.zeros([(nx + 1) * (nz + 1), (nx + 1) * (nz + 1)])  # 定义刚度
-        self.k_init = sp.dok_matrix(((self.nx + 1) * (self.nz + 1), (self.nx + 1) * (self.nz + 1)), dtype=np.float32)
-        # 使用dok稀疏矩阵内存占用更少，但计算速度降低，主要时间用于组装
+        self.k_init = np.zeros(((self.nx + 1) * (self.nz + 1), (self.nx + 1) * (self.nz + 1)), dtype=np.float32)
         self.f = np.zeros([(self.nx + 1) * (self.nz + 1)])  # 定义非齐次项
         self.nq = []  # 无量纲流量因数
         self.q = []  # 节流孔流量
@@ -115,6 +114,8 @@ class FilmSystem(BaseSystem):
                 for m in range(4):
                     tol_m = elem.nodes[m].number
                     self.k_init[tol_n, tol_m] += elem.ke[n, m]  # 组装总刚度矩阵，找到
+        # 组装完矩阵后将矩阵格式转化为稀疏矩阵csc
+        self.k_init = sp.csc_matrix(self.k_init)
 
     # 将拉格朗日乘子阵组装进整体矩阵
     def couple_boundary_matrix(self, kps, fps):
@@ -192,7 +193,7 @@ class FilmSystem(BaseSystem):
         self.f_add_boundary = np.hstack((self.f, fp))  # 补充附加矩阵非齐次项
 
     # 计算厚度场
-    def cal_h(self, angel=0):
+    def cal_h(self, angel=np.pi*6/5):
         nx = self.nx
         nz = self.nz
         hz = np.zeros([self.nx + 1, self.nz + 1])
@@ -258,9 +259,6 @@ class FilmSystem(BaseSystem):
         dp = sl.spsolve(kp, fp)
         # 更新压力
         self.p_result = self.p_init + dp
-        # 更新各节点压力值
-        for i in range(len(self.nodes)):
-            self.nodes[i].p = self.p_result[self.nodes[i].number]
         return True
 
     def setting_orifce_position(self, orifice_x, orifice_z):
@@ -303,10 +301,10 @@ class FilmSystem(BaseSystem):
                 dp = 1 - p_in_init
                 while dp < 0:
                     if isinstance(self.g, np.float64):
-                        self.g = self.g ** self.k
+                        self.g = self.g * self.k
                         p_in_init = self.p_init[node_no] + 1 / self.g * (self.p_result[node_no] - self.p_init[node_no])
                     elif isinstance(self.g, np.ndarray):
-                        self.g[i] = self.g[i] ** self.k
+                        self.g[i] = self.g[i] * self.k
                         p_in_init = self.p_init[node_no] + 1 / self.g[i] * (
                                     self.p_result[node_no] - self.p_init[node_no])
                     dp = 1 - p_in_init
@@ -373,6 +371,12 @@ class FilmSystem(BaseSystem):
         dp = self.p_init[0:self.freedoms_norank] - self.p_result[0:self.freedoms_norank]
         error = np.abs((np.sum(dp)) / np.sum(self.p_result[0:self.freedoms_norank]))
         return error
+
+    #  更新压力至所有节点
+    def updata_node(self):
+        for i in range(len(self.nodes)):
+            self.nodes[i].p = self.p_result[self.nodes[i].number]
+
 
     #  三维表面画图
     def plot_p_3d(self):

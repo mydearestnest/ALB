@@ -21,5 +21,8 @@ print('承载力：', load)
 new_time = time.time()
 print('计算承载力运行时间：', new_time-old_time)
 
+old_time = time.time()
 dysystem = DySystem(LN_sys.pass_dy())
 model.dynamic_char(dysystem)
+new_time = time.time()
+print('动态参数运行时间：', new_time-old_time)
